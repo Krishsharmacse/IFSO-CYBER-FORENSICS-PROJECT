@@ -1,0 +1,30 @@
+<ivy-module version="2.0">
+    <info organisation="org.sleuthkit.autopsy" module="tika"/>
+    <configurations >
+        <conf name="tika"/>
+    </configurations>
+    <dependencies >
+        <dependency conf="tika->default" org="org.apache.tika" name="tika-parsers-standard-package" rev="${tika.version}"/>
+        <dependency conf="tika->default" org="org.apache.tika" name="tika-parser-scientific-package" rev="${tika.version}"/>
+        <dependency conf="tika->default" org="org.apache.tika" name="tika-parser-sqlite3-package" rev="${tika.version}"/>
+        <dependency conf="tika->default" org="org.apache.tika" name="tika-parser-advancedmedia-package" rev="${tika.version}"/>
+
+        <dependency conf="tika->default" org="org.apache.tika" name="tika-core" rev="${tika.version}"/>
+
+        <dependency org="org.apache.poi" name="poi-ooxml-full" rev="5.3.0"/>
+
+        <dependency conf="tika->default" org="org.bouncycastle" name="bcprov-jdk18on" rev="${bouncycastle.version}"/>
+        <dependency conf="tika->default" org="org.bouncycastle" name="bcpkix-jdk18on" rev="${bouncycastle.version}"/>
+
+        <exclude org="org.bouncycastle" module="bcprov-jdk15on"/>
+        <exclude org="org.bouncycastle" module="bcpkix-jdk15on"/>
+        <exclude org="*" ext="*" type="javadoc"/>
+        <exclude org="*" ext="*" type="tests" />
+
+        <override org="org.bouncycastle" module="bcprov-jdk18on" rev="${bouncycastle.version}"/>
+        <override org="org.bouncycastle" module="bcpkix-jdk18on" rev="${bouncycastle.version}"/>
+
+        <override org="com.google.guava" module="guava" rev="33.4.0-jre"/>
+        <override org="org.apache.logging.log4j" module="log4j-api" rev="${log4j.version}"/>
+    </dependencies>
+</ivy-module>

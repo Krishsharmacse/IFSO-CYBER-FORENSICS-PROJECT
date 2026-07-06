@@ -1,0 +1,17 @@
+<ivysettings>
+  <property name="httpcomponents.version" value="4.5.14"/>
+  <property name="curator.version" value="5.7.1"/>
+  <property name="batik.version" value="1.18"/>
+  <property name="bouncycastle.version" value="1.79"/>
+  <property name="netty.version" value="4.1.116.Final"/>
+
+  <settings defaultResolver="main"/>
+  <resolvers>
+    <chain name="main">
+        <ibiblio name="central" root="https://repo1.maven.org/maven2" m2compatible="true"/>
+        <ibiblio name="maven.restlet.org" root="http://maven.restlet.com" m2compatible="true" />  
+        <ibiblio name="license4j.com" root="http://www.license4j.com/maven/" m2compatible="true" />  
+    </chain>
+  </resolvers>
+  <property name="packaging.type" value="jar" />
+</ivysettings>

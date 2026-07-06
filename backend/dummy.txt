@@ -1,0 +1,2 @@
+This is a harmless test file.
+However, it contains a MALICIOUS_STRING so that YARA can detect it.
