@@ -1,0 +1,3 @@
+[submodule "plugins/opencti"]
+	path = plugins/opencti
+	url = https://github.com/OpenCTI-Platform/opencti.git
