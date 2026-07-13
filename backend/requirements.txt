@@ -1,4 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  CyberX Forensics Platform — Python Requirements
+#  Works on Windows, Linux and macOS
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Core API Framework ────────────────────────────────────────────────────────
 fastapi
-uvicorn
+uvicorn[standard]
+python-dotenv
 sqlalchemy
-yara-python
+
+# ── Data / ML ─────────────────────────────────────────────────────────────────
+numpy
+pandas
+scikit-learn
+joblib
+
+# ── Forensics Libraries (pure-Python — cross-platform) ───────────────────────
+yara-python          # YARA rule scanning
+python-evtx          # Windows EVTX event log parsing
+eml-parser           # Email (.eml) analysis
+androguard           # Android APK static analysis
+impacket             # SAM/SYSTEM hash extraction (secretsdump)
+whois                # WHOIS domain lookups
+
+# ── Brute-force / Credential Tools ────────────────────────────────────────────
+requests             # HTTP brute force
+paramiko             # SSH brute force
+pyzipper             # AES-encrypted ZIP cracking
+pikepdf              # PDF password cracking

@@ -18,11 +18,24 @@ Intelligence Features:
   - Rate-adaptive threading to avoid target lockout
   - Full audit trail (each attempt logged with timestamps)
   - John the Ripper used for hash cracking whenever available
+  - Cross-platform: Windows + Linux/macOS
 """
 
-import os, hashlib, ftplib, zipfile, threading, time, subprocess, tempfile, re
+import os
+import hashlib
+import ftplib
+import zipfile
+import threading
+import time
+import tempfile
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+
+from wrappers.platform_utils import (
+    run, JOHN_BIN, JOHN_WORDLIST, john_available,
+    WORDLIST_PATH, safe_temp_file, IS_WINDOWS
+)
 
 try:
     import requests
@@ -48,70 +61,59 @@ try:
 except ImportError:
     HAS_PIKEPDF = False
 
-# ── Wordlists ──────────────────────────────────────────────────────────────
-_DIR       = os.path.dirname(__file__)
-WORDLIST   = os.path.join(_DIR, '..', 'wordlists', 'top10000.txt')
-JOHN_LIST  = '/usr/share/john/password.lst'
-JOHN_BIN   = '/usr/sbin/john'
 
-
+# ── Wordlists ──────────────────────────────────────────────────────────────────
 def _load_wordlist(custom_path: str = None) -> list:
     """Load + merge John's built-in list with our smart wordlist."""
     sources = []
     if custom_path and os.path.exists(custom_path):
         sources.append(custom_path)
-    if os.path.exists(WORDLIST):
-        sources.append(WORDLIST)
-    if os.path.exists(JOHN_LIST):
-        sources.append(JOHN_LIST)
+    if WORDLIST_PATH.exists():
+        sources.append(str(WORDLIST_PATH))
+    if JOHN_WORDLIST and os.path.exists(JOHN_WORDLIST):
+        sources.append(JOHN_WORDLIST)
 
     seen, result = set(), []
     for src in sources:
-        with open(src, 'r', encoding='utf-8', errors='ignore') as f:
-            for line in f:
-                w = line.strip()
-                if w and not w.startswith('#') and w not in seen:
-                    seen.add(w)
-                    result.append(w)
+        try:
+            with open(src, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    w = line.strip()
+                    if w and not w.startswith('#') and w not in seen:
+                        seen.add(w)
+                        result.append(w)
+        except Exception:
+            continue
 
     if not result:
-        result = ["password","123456","admin","letmein","qwerty","12345678"]
+        result = ["password", "123456", "admin", "letmein", "qwerty", "12345678"]
     return result
 
 
 def _smart_mutations(base_words: list) -> list:
-    """Generate intelligent password mutations from a base word list.
-    Mimics how real users pick passwords (first-letter caps, trailing numbers, leet).
-    Used to extend cracking coverage without a massive dictionary.
-    """
+    """Generate intelligent password mutations from a base word list."""
     extras = set()
-    for w in base_words[:200]:          # mutate top-200 only (performance)
+    for w in base_words[:200]:
         extras.add(w.capitalize())
         extras.add(w + '123')
         extras.add(w + '@123')
         extras.add(w + '!')
-        extras.add(w[0].upper() + w[1:] + '1')
-        extras.add(w.replace('a','@').replace('o','0').replace('i','1'))
+        if len(w) > 1:
+            extras.add(w[0].upper() + w[1:] + '1')
+        extras.add(w.replace('a', '@').replace('o', '0').replace('i', '1'))
     return list(extras)
 
 
 def _detect_hash_type(h: str) -> str:
     """Auto-detect hash algorithm by length."""
-    length_map = {32: 'md5', 40: 'sha1', 56: 'sha224', 64: 'sha256', 96: 'sha384', 128: 'sha512'}
-    # NTLM is always 32 chars but we check for common NTLM context cues
+    length_map = {
+        32: 'md5', 40: 'sha1', 56: 'sha224',
+        64: 'sha256', 96: 'sha384', 128: 'sha512'
+    }
     return length_map.get(len(h.strip()), 'unknown')
 
 
-def _john_available() -> bool:
-    try:
-        r = subprocess.run([JOHN_BIN], capture_output=True, timeout=5)
-        # John prints its banner to stdout even with no args; returncode is 2 but it works
-        return b'John the Ripper' in r.stdout or b'John the Ripper' in r.stderr
-    except Exception:
-        return False
-
-
-# ── 1. HTTP Web Login ──────────────────────────────────────────────────────
+# ── 1. HTTP Web Login ──────────────────────────────────────────────────────────
 def brute_http(
     url: str, username: str,
     username_field: str = "username", password_field: str = "password",
@@ -137,12 +139,19 @@ def brute_http(
             resp = requests.post(url, data=data, timeout=6, allow_redirects=True)
             ts   = datetime.utcnow().isoformat()
 
-            hit = (success_string and success_string.lower() in resp.text.lower()) or \
-                  (not success_string and failure_string.lower() not in resp.text.lower())
+            hit = (
+                (success_string and success_string.lower() in resp.text.lower()) or
+                (not success_string and failure_string.lower() not in resp.text.lower())
+            )
 
             with lock:
                 tried.append(pwd)
-                audit_log.append({"time": ts, "password": pwd, "http_status": resp.status_code, "success": hit})
+                audit_log.append({
+                    "time"       : ts,
+                    "password"   : pwd,
+                    "http_status": resp.status_code,
+                    "success"    : hit
+                })
                 if hit and not found:
                     found = pwd
         except Exception:
@@ -170,7 +179,7 @@ def brute_http(
     }
 
 
-# ── 2. SSH ─────────────────────────────────────────────────────────────────
+# ── 2. SSH ─────────────────────────────────────────────────────────────────────
 def brute_ssh(host: str, username: str, port: int = 22,
               wordlist_path: str = None, max_attempts: int = 200) -> dict:
     if not HAS_PARAMIKO:
@@ -185,14 +194,17 @@ def brute_ssh(host: str, username: str, port: int = 22,
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            client.connect(host, port=port, username=username, password=pwd, timeout=5, banner_timeout=5)
+            client.connect(
+                host, port=port, username=username,
+                password=pwd, timeout=5, banner_timeout=5
+            )
             client.close()
             elapsed = round(time.time() - start, 2)
             return {
-                "status": "Success", "mode": "ssh",
-                "host": f"{host}:{port}", "username": username,
+                "status"          : "Success", "mode": "ssh",
+                "host"            : f"{host}:{port}", "username": username,
                 "cracked_password": pwd, "attempts": idx + 1,
-                "time_seconds": elapsed, "audit_log_preview": audit_log[-10:]
+                "time_seconds"    : elapsed, "audit_log_preview": audit_log[-10:]
             }
         except paramiko.AuthenticationException:
             audit_log.append({"attempt": idx + 1, "password": pwd, "result": "auth_failed"})
@@ -202,11 +214,14 @@ def brute_ssh(host: str, username: str, port: int = 22,
             client.close()
 
     elapsed = round(time.time() - start, 2)
-    return {"status": "Not Found", "mode": "ssh", "attempts": len(passwords),
-            "time_seconds": elapsed, "audit_log_preview": audit_log[-10:]}
+    return {
+        "status"           : "Not Found", "mode": "ssh",
+        "attempts"         : len(passwords), "time_seconds": elapsed,
+        "audit_log_preview": audit_log[-10:]
+    }
 
 
-# ── 3. FTP ─────────────────────────────────────────────────────────────────
+# ── 3. FTP ─────────────────────────────────────────────────────────────────────
 def brute_ftp(host: str, username: str, port: int = 21,
               wordlist_path: str = None, max_attempts: int = 300) -> dict:
     base_words = _load_wordlist(wordlist_path)[:max_attempts]
@@ -222,10 +237,10 @@ def brute_ftp(host: str, username: str, port: int = 21,
             ftp.quit()
             elapsed = round(time.time() - start, 2)
             return {
-                "status": "Success", "mode": "ftp",
-                "host": f"{host}:{port}", "username": username,
+                "status"          : "Success", "mode": "ftp",
+                "host"            : f"{host}:{port}", "username": username,
                 "cracked_password": pwd, "attempts": idx + 1,
-                "time_seconds": elapsed
+                "time_seconds"    : elapsed
             }
         except ftplib.error_perm:
             audit_log.append({"attempt": idx + 1, "password": pwd, "result": "auth_failed"})
@@ -233,11 +248,14 @@ def brute_ftp(host: str, username: str, port: int = 21,
             return {"status": "Error", "error": str(e), "attempts": idx + 1}
 
     elapsed = round(time.time() - start, 2)
-    return {"status": "Not Found", "mode": "ftp", "attempts": len(passwords),
-            "time_seconds": elapsed, "audit_log_preview": audit_log[-10:]}
+    return {
+        "status"           : "Not Found", "mode": "ftp",
+        "attempts"         : len(passwords), "time_seconds": elapsed,
+        "audit_log_preview": audit_log[-10:]
+    }
 
 
-# ── 4. ZIP ─────────────────────────────────────────────────────────────────
+# ── 4. ZIP ─────────────────────────────────────────────────────────────────────
 def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 100000) -> dict:
     if not os.path.exists(zip_path):
         return {"error": f"ZIP file not found: {zip_path}"}
@@ -248,7 +266,7 @@ def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 1000
     start      = time.time()
 
     # Try John the Ripper first (much faster C implementation)
-    if _john_available():
+    if john_available():
         john_result = _john_crack_file(zip_path, "zip", passwords[:5000])
         if john_result.get("cracked_password"):
             return {**john_result, "mode": "zip", "file": zip_path, "engine": "John the Ripper"}
@@ -259,9 +277,11 @@ def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 1000
                 try:
                     zf.extractall(pwd=pwd.encode('utf-8'))
                     elapsed = round(time.time() - start, 2)
-                    return {"status": "Success", "mode": "zip", "file": zip_path,
-                            "cracked_password": pwd, "attempts": idx + 1,
-                            "time_seconds": elapsed, "engine": "Python pyzipper"}
+                    return {
+                        "status"          : "Success", "mode": "zip", "file": zip_path,
+                        "cracked_password": pwd, "attempts": idx + 1,
+                        "time_seconds"    : elapsed, "engine": "Python pyzipper"
+                    }
                 except Exception:
                     continue
     except Exception as e:
@@ -271,7 +291,7 @@ def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 1000
     return {"status": "Not Found", "mode": "zip", "attempts": len(passwords), "time_seconds": elapsed}
 
 
-# ── 5. PDF ─────────────────────────────────────────────────────────────────
+# ── 5. PDF ─────────────────────────────────────────────────────────────────────
 def brute_pdf(pdf_path: str, wordlist_path: str = None, max_attempts: int = 100000) -> dict:
     if not HAS_PIKEPDF:
         return {"error": "pikepdf not installed. Run: pip install pikepdf"}
@@ -286,8 +306,10 @@ def brute_pdf(pdf_path: str, wordlist_path: str = None, max_attempts: int = 1000
         try:
             with pikepdf.open(pdf_path, password=pwd):
                 elapsed = round(time.time() - start, 2)
-                return {"status": "Success", "mode": "pdf", "file": pdf_path,
-                        "cracked_password": pwd, "attempts": idx + 1, "time_seconds": elapsed}
+                return {
+                    "status"          : "Success", "mode": "pdf", "file": pdf_path,
+                    "cracked_password": pwd, "attempts": idx + 1, "time_seconds": elapsed
+                }
         except pikepdf.PasswordError:
             continue
         except Exception as e:
@@ -297,7 +319,7 @@ def brute_pdf(pdf_path: str, wordlist_path: str = None, max_attempts: int = 1000
     return {"status": "Not Found", "mode": "pdf", "attempts": len(passwords), "time_seconds": elapsed}
 
 
-# ── 6. Hash Cracking ───────────────────────────────────────────────────────
+# ── 6. Hash Cracking ───────────────────────────────────────────────────────────
 def crack_hash_all(
     target_hash: str,
     hash_type: str = "auto",
@@ -318,16 +340,16 @@ def crack_hash_all(
     base_words = _load_wordlist(wordlist_path)[:max_attempts]
     passwords  = list(dict.fromkeys(base_words + _smart_mutations(base_words)))[:max_attempts]
 
-    # ── Strategy 1: John the Ripper ──────────────────────────────────────
-    if _john_available():
+    # Strategy 1: John the Ripper
+    if john_available():
         john_res = _john_crack_hash(target_hash, hash_type, passwords)
         if john_res.get("cracked_password"):
             return {**john_res, "engine": "John the Ripper", "detected_hash_type": detected}
 
-    # ── Strategy 2: Python hashlib fallback ─────────────────────────────
+    # Strategy 2: Python hashlib fallback
     algo_map = {
-        "md5":    hashlib.md5,
-        "sha1":   hashlib.sha1,
+        "md5"   : hashlib.md5,
+        "sha1"  : hashlib.sha1,
         "sha224": hashlib.sha224,
         "sha256": hashlib.sha256,
         "sha384": hashlib.sha384,
@@ -341,16 +363,16 @@ def crack_hash_all(
         if computed.lower() == target_hash.lower():
             elapsed = round(time.time() - start, 2)
             return {
-                "status"           : "Success",
-                "mode"             : "hash",
-                "hash_type"        : hash_type,
+                "status"            : "Success",
+                "mode"              : "hash",
+                "hash_type"         : hash_type,
                 "detected_hash_type": detected,
-                "input_hash"       : target_hash,
-                "cracked_password" : pwd,
-                "attempts"         : idx + 1,
-                "time_seconds"     : elapsed,
-                "engine"           : "Python hashlib",
-                "mutations_applied": True
+                "input_hash"        : target_hash,
+                "cracked_password"  : pwd,
+                "attempts"          : idx + 1,
+                "time_seconds"      : elapsed,
+                "engine"            : "Python hashlib",
+                "mutations_applied" : True
             }
 
     elapsed = round(time.time() - start, 2)
@@ -364,33 +386,28 @@ def crack_hash_all(
     }
 
 
-# ── John the Ripper helpers ────────────────────────────────────────────────
+# ── John the Ripper helpers ────────────────────────────────────────────────────
 def _john_crack_hash(target_hash: str, hash_type: str, passwords: list) -> dict:
     """Write hash + wordlist to temp files, call john, parse result."""
-    # Format: user:hash
     hash_line = f"forensic_target:{target_hash}"
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as hf:
-        hf.write(hash_line)
-        hash_file = hf.name
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as wf:
-        wf.write('\n'.join(passwords[:50000]))
-        word_file = wf.name
-
-    # Map our hash_type to john's --format argument
-    fmt_map = {"md5": "raw-md5", "sha1": "raw-sha1", "sha256": "raw-sha256", "sha512": "raw-sha512"}
-    john_fmt = fmt_map.get(hash_type, "raw-md5")
+    # Use safe_temp_file to avoid Windows file-locking issues with delete=True
+    hash_file = safe_temp_file(suffix=".txt")
+    word_file = safe_temp_file(suffix=".txt")
 
     try:
-        subprocess.run(
-            [JOHN_BIN, f"--format={john_fmt}", f"--wordlist={word_file}", hash_file],
-            capture_output=True, text=True, timeout=120
-        )
-        show = subprocess.run(
-            [JOHN_BIN, "--show", f"--format={john_fmt}", hash_file],
-            capture_output=True, text=True
-        )
-        # Parse: forensic_target:PASSWORD:...
+        with open(hash_file, 'w', encoding='utf-8') as hf:
+            hf.write(hash_line)
+
+        with open(word_file, 'w', encoding='utf-8') as wf:
+            wf.write('\n'.join(passwords[:50000]))
+
+        fmt_map   = {"md5": "raw-md5", "sha1": "raw-sha1", "sha256": "raw-sha256", "sha512": "raw-sha512"}
+        john_fmt  = fmt_map.get(hash_type, "raw-md5")
+
+        run([JOHN_BIN, f"--format={john_fmt}", f"--wordlist={word_file}", hash_file], timeout=120)
+        show = run([JOHN_BIN, "--show", f"--format={john_fmt}", hash_file], timeout=30)
+
         cracked = None
         for line in show.stdout.splitlines():
             if line.startswith("forensic_target:"):
@@ -399,9 +416,11 @@ def _john_crack_hash(target_hash: str, hash_type: str, passwords: list) -> dict:
                     cracked = parts[1]
                     break
 
-        return {"status": "Success" if cracked else "Not Found",
-                "cracked_password": cracked,
-                "john_output": show.stdout[:500]}
+        return {
+            "status"          : "Success" if cracked else "Not Found",
+            "cracked_password": cracked,
+            "john_output"     : show.stdout[:500]
+        }
     except Exception as e:
         return {"status": "Error", "error": str(e)}
     finally:
@@ -414,16 +433,13 @@ def _john_crack_hash(target_hash: str, hash_type: str, passwords: list) -> dict:
 
 def _john_crack_file(file_path: str, file_type: str, passwords: list) -> dict:
     """Use john directly on a protected file (zip/pdf via *2john helpers)."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as wf:
-        wf.write('\n'.join(passwords))
-        word_file = wf.name
-
+    word_file = safe_temp_file(suffix=".txt")
     try:
-        proc = subprocess.run(
-            [JOHN_BIN, f"--wordlist={word_file}", file_path],
-            capture_output=True, text=True, timeout=120
-        )
-        show = subprocess.run([JOHN_BIN, "--show", file_path], capture_output=True, text=True)
+        with open(word_file, 'w', encoding='utf-8') as wf:
+            wf.write('\n'.join(passwords))
+
+        run([JOHN_BIN, f"--wordlist={word_file}", file_path], timeout=120)
+        show = run([JOHN_BIN, "--show", file_path], timeout=30)
 
         cracked = None
         for line in show.stdout.splitlines():
@@ -433,9 +449,11 @@ def _john_crack_file(file_path: str, file_type: str, passwords: list) -> dict:
                     cracked = parts[1]
                     break
 
-        return {"status": "Success" if cracked else "Not Found",
-                "cracked_password": cracked,
-                "john_output": show.stdout[:500]}
+        return {
+            "status"          : "Success" if cracked else "Not Found",
+            "cracked_password": cracked,
+            "john_output"     : show.stdout[:500]
+        }
     except Exception as e:
         return {"status": "Error", "error": str(e)}
     finally:
@@ -445,7 +463,7 @@ def _john_crack_file(file_path: str, file_type: str, passwords: list) -> dict:
             pass
 
 
-# ── Main Dispatcher ────────────────────────────────────────────────────────
+# ── Main Dispatcher ────────────────────────────────────────────────────────────
 def run_brute_force(
     mode: str,
     target: str,
@@ -463,6 +481,7 @@ def run_brute_force(
     """
     Unified forensic brute-force dispatcher.
     modes: http | ssh | ftp | zip | pdf | hash
+    Cross-platform: Windows + Linux/macOS.
     """
     dispatch = {
         "http": lambda: brute_http(

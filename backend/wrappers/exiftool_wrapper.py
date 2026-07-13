@@ -1,39 +1,38 @@
-import subprocess
 import json
 import os
+from wrappers.platform_utils import run, EXIFTOOL_BIN
 
 def run_exiftool(file_path: str):
     """
-    Runs exiftool on a specified file path and returns the extracted metadata as a Python dictionary.
+    Runs exiftool on a specified file path and returns extracted metadata.
+    Works on both Windows and Linux/macOS.
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
-        
+
     try:
-        # Assuming exiftool is installed on the system and available in PATH
-        # We use -j to get JSON formatted output
-        cmd = ['exiftool', '-j']
-        
-        # If the path is a directory, add the -r (recursive) flag to scan all files inside
+        cmd = [EXIFTOOL_BIN, '-j']
+
         if os.path.isdir(file_path):
             cmd.append('-r')
-            
+
         cmd.append(file_path)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
+        result = run(cmd, timeout=60)
+
         if result.returncode == 0:
-            # exiftool returns a list of JSON objects (one per file)
             output = json.loads(result.stdout)
-            
             if os.path.isdir(file_path):
-                # Return the full list of all images if it was a folder scan
                 return {"total_files_scanned": len(output), "all_metadata": output}
             else:
-                # Keep original behavior for single file
                 return output[0] if len(output) > 0 else {}
         else:
-            return {"error": result.stderr.strip()}
-            
+            return {"error": result.stderr.strip() or "exiftool returned a non-zero exit code."}
+
+    except FileNotFoundError:
+        return {
+            "error": "exiftool is not installed or not found in PATH.",
+            "fix": "Linux: sudo apt install exiftool | Windows: Download from https://exiftool.org and add to PATH"
+        }
     except Exception as e:
         return {"error": str(e)}

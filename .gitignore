@@ -1,1 +1,51 @@
-.venv
+# ── Plugins (large binary installs — install locally per README) ──────────────
+plugins/
+
+# ── Python ────────────────────────────────────────────────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+backend/models
+# ── Environment / Secrets ─────────────────────────────────────
+.env
+*.env.local
+
+# ── Database & ML Models ──────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+backend/models/*.pkl
+*.pkl
+
+# ── Reports (generated at runtime) ───────────────────────────
+backend/reports/
+
+# ── Temporary / scratch files ─────────────────────────────────
+scratch.py
+dummy.txt
+test_*.py
+*.log
+*.tmp
+*.body
+
+# ── OS junk ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Node.js ───────────────────────────────────────────────────
+node_modules/
+dist/
+.cache/
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

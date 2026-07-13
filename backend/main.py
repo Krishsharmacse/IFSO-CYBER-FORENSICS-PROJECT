@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import database, models, json
 from dotenv import load_dotenv
+from wrappers.platform_utils import get_platform_info
 from wrappers import (
     exiftool_wrapper, yara_wrapper, autopsy_wrapper, ghidra_wrapper,
     androguard_wrapper, mobsf_wrapper, volatility_wrapper,
@@ -79,10 +80,10 @@ class BruteForceRequest(BaseModel):
     username: str = "admin"
     username_field: str = "username"
     password_field: str = "password"
-    success_string: str = None
+    success_string: str | None = None
     failure_string: str = "Invalid"
-    port: int = None
-    wordlist_path: str = None
+    port: int | None = None
+    wordlist_path: str | None = None
     hash_type: str = "auto"
     max_attempts: int = 1000
     threads: int = 8
@@ -104,6 +105,11 @@ def _save(db, filename, tool, results):
 @app.get("/")
 def root():
     return {"message": "CyberX Forensics Platform API v2.0 — 15 tools active"}
+
+@app.get("/diagnostics")
+def diagnostics():
+    """Returns the resolved binary paths and OS info for all tools."""
+    return get_platform_info()
 
 @app.post("/analyze/exiftool")
 def analyze_exif(req: ExiftoolRequest, db: Session = Depends(get_db)):
@@ -138,9 +144,54 @@ def analyze_androguard(req: MobileRequest, db: Session = Depends(get_db)):
 @app.post("/analyze/mobsf")
 def analyze_mobsf(req: MobileRequest, db: Session = Depends(get_db)):
     results = mobsf_wrapper.run_mobsf_scan(req.file_path)
+    
+    # Ensure results is always a dictionary
+    if not isinstance(results, dict):
+        results = {"error": str(results)}
+    elif isinstance(results, str):
+        results = {"error": results}
+    
+    # If there's an error, make sure we save it properly
+    if "error" in results:
+        # Save as failed investigation
+        inv = models.Investigation(
+            filename=req.file_path, 
+            tool_used="mobsf", 
+            status="Failed"
+        )
+        inv.results = json.dumps(results)
+        db.add(inv)
+        db.commit()
+        db.refresh(inv)
+        return {"id": inv.id, "status": inv.status, "results": results}
+    
     inv = _save(db, req.file_path, "mobsf", results)
     return {"id": inv.id, "status": inv.status, "results": results}
 
+class MobSFDynamicRequest(BaseModel):
+    file_path: str
+    wait_time: int = 30
+
+@app.post("/analyze/mobsf_dynamic")
+def analyze_mobsf_dynamic(req: MobSFDynamicRequest, db: Session = Depends(get_db)):
+    results = mobsf_wrapper.run_mobsf_dynamic_scan(req.file_path, req.wait_time)
+    
+    # If the file path doesn't exist, mobsf_wrapper returns an error without making DB record
+    if "error" in results and "APK file not found" in results["error"]:
+        # Save as failed investigation
+        inv = models.Investigation(
+            filename=req.file_path, 
+            tool_used="mobsf_dynamic", 
+            status="Failed"
+        )
+        inv.results = json.dumps(results)
+        db.add(inv)
+        db.commit()
+        db.refresh(inv)
+        return {"id": inv.id, "status": inv.status, "results": results}
+    
+    inv = _save(db, req.file_path, "mobsf_dynamic", results)
+    return {"id": inv.id, "status": inv.status, "results": results}
 @app.post("/analyze/volatility")
 def analyze_volatility(req: MemoryRequest, db: Session = Depends(get_db)):
     results = volatility_wrapper.run_volatility(req.file_path, req.scan_type)

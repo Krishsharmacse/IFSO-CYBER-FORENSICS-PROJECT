@@ -1,5 +1,14 @@
 import os
+import logging
 from androguard.core.apk import APK
+
+# Suppress spammy warnings from androguard about malformed APKs
+logging.getLogger("androguard").setLevel(logging.ERROR)
+try:
+    from loguru import logger
+    logger.disable("androguard")
+except ImportError:
+    pass
 
 def analyze_apk(file_path: str):
     """
