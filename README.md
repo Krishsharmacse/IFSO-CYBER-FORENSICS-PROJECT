@@ -216,22 +216,44 @@ Forensic disk image analysis using Sleuth Kit — the command-line engine behind
 
 **Endpoint:** `POST /analyze/ghidra`
 
-Runs NSA's Ghidra in headless (CLI) mode to auto-analyze a binary executable.
+Runs NSA's Ghidra in headless (CLI) mode to auto-analyze a binary executable and extract decompiled C-Code natively.
 
 **Input Parameters:**
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `file_path` | string | Path to binary (EXE, ELF, DLL, APK, firmware) |
+| `extract_code` | boolean| Set to `true` to extract decompiled C-Code (Default: `true`) |
 
-**What it does:**
-- Imports the binary into a temporary Ghidra project
-- Runs Ghidra's full auto-analysis (disassembly, decompilation, function detection)
-- Returns the last 10 lines of Ghidra's analysis log
-- Cleans up the temp project after analysis
+**What it does in the background:**
+- Creates a temporary Ghidra project in the system `/tmp/` directory.
+- Imports the binary into the project.
+- Runs Ghidra's full auto-analysis (disassembly, function detection, cross-references).
+- Executes a custom native Java extraction script (`export_script.java`) via Ghidra's `DecompInterface`.
+- Exports functions, entry points, strings, and **full decompiled C-Code** to a JSON file.
+- Cleans up and completely deletes the temporary project after analysis to save disk space.
+
+**How to run it manually (Without the CyberX backend):**
+If you want to run the exact same headless extraction manually from your terminal, use this command:
+
+```bash
+# 1. Set where you want the JSON output to be saved
+export GHIDRA_EXPORT_PATH="/tmp/ghidra_export.json"
+
+# 2. Run the Ghidra Headless Analyzer
+/opt/ghidra/support/analyzeHeadless \
+  /tmp/ghidra_project_manual \
+  Project_Manual \
+  -import "/path/to/your/malware.exe" \
+  -overwrite \
+  -deleteProject \
+  -max-cpu 4 \
+  -scriptPath /path/to/folder/containing_your_java_script \
+  -postScript export_script.java
+```
 
 **Requirements:**
-- Ghidra 12.1.2 installed in `plugins/ghidra_12.1.2_PUBLIC/`
+- Ghidra 12.1.2 installed in `plugins/ghidra_12.1.2_PUBLIC/` (or path set via `GHIDRA_HEADLESS` env variable)
 - Java 17+ installed (`sudo apt install openjdk-17-jdk`)
 
 ---

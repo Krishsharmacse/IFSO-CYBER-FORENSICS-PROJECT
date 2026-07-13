@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { 
-  Shield, FileText, Camera, HardDrive, Activity, Search, Upload, Play, 
+import {
+  Shield, FileText, Camera, HardDrive, Activity, Search, Upload, Play,
   Terminal, Cpu, Smartphone, Globe, Network, Mail, List, Image, Key, Zap,
   ChevronDown, ChevronRight, Folder, FolderOpen, RefreshCw, AlertTriangle, CheckCircle, Info,
   Eye, FileCode, Server
@@ -29,7 +29,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [resultSubTab, setResultSubTab] = useState('dashboard'); // 'dashboard' | 'json'
-  
+
   // Search and Collapsible Category State
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
@@ -45,7 +45,7 @@ function App() {
   // Interactive CLI loader state
   const [loaderMessage, setLoaderMessage] = useState('');
   const [loaderSteps, setLoaderSteps] = useState([]);
-  
+
   const toggleCategory = (cat) => {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
@@ -209,7 +209,7 @@ function App() {
       const steps = messages[activeTab] || messages.default;
       let idx = 0;
       setLoaderSteps([]);
-      
+
       setLoaderMessage(steps[0]);
       setLoaderSteps([`> ${steps[0]}`]);
 
@@ -247,9 +247,12 @@ function App() {
         endpoint = '/analyze/autopsy';
         payload = { image_path: filePath, scan_type: sleuthkitScanType };
       }
-      if (activeTab === 'ghidra') endpoint = '/analyze/ghidra';
+      if (activeTab === 'ghidra') {
+        endpoint = '/analyze/ghidra';
+        payload.extract_code = true;
+      }
       if (activeTab === 'mobsf') endpoint = '/analyze/mobsf';
-      
+
       if (activeTab === 'volatility') {
         endpoint = '/analyze/volatility';
         payload.scan_type = volatilityScanType;
@@ -296,7 +299,7 @@ function App() {
 
   // Filter sidebar based on search query
   const filteredCategories = categories.map(cat => {
-    const matchedItems = cat.items.filter(item => 
+    const matchedItems = cat.items.filter(item =>
       item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
       item.desc.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
       item.tool.toLowerCase().includes(sidebarSearch.toLowerCase())
@@ -307,17 +310,17 @@ function App() {
   return (
     <div className="dashboard-container cyber-grid">
       <div className="scanline"></div>
-      
+
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="cyber-corner-tl"></div>
         <div className="cyber-corner-bl"></div>
-        
+
         <div className="logo glowing-text">
           <Shield size={26} color="#00f0ff" />
           <span>CYBERX // SOC</span>
         </div>
-        
+
         <div className="system-subtitle">
           <span>SEC-OPS // TERMINAL DEPLOYMENT</span>
         </div>
@@ -325,9 +328,9 @@ function App() {
         {/* Sidebar Search */}
         <div className="sidebar-search">
           <Search size={14} className="search-icon" />
-          <input 
-            type="text" 
-            placeholder="FILTER FORENSIC ENGINES..." 
+          <input
+            type="text"
+            placeholder="FILTER FORENSIC ENGINES..."
             value={sidebarSearch}
             onChange={(e) => setSidebarSearch(e.target.value)}
           />
@@ -412,7 +415,7 @@ function App() {
           <div className="cyber-corner-tr"></div>
           <div className="cyber-corner-bl"></div>
           <div className="cyber-corner-br"></div>
-          
+
           <div className="form-title">
             <Server size={18} style={{ color: 'var(--primary)' }} />
             <h2>Investigation Setup // Target Parameters</h2>
@@ -472,6 +475,7 @@ function App() {
                   <option value="fsstat">File System Info (fsstat)</option>
                   <option value="fls">List All Files & Deleted (fls)</option>
                   <option value="timeline">Generate Activity Timeline (mactime)</option>
+                  <option value="enterprise">Enterprise Extraction Pipeline</option>
                 </select>
               </div>
             )}
@@ -641,9 +645,9 @@ function App() {
             <div className="cyber-corner-tr" style={{ borderColor: '#00f0ff' }}></div>
             <div className="cyber-corner-bl" style={{ borderColor: '#00f0ff' }}></div>
             <div className="cyber-corner-br" style={{ borderColor: '#00f0ff' }}></div>
-            
+
             <div className="scanner-laser"></div>
-            
+
             <div className="terminal-header">
               <div className="terminal-dots">
                 <span className="dot red"></span>
@@ -673,35 +677,41 @@ function App() {
             <div className="cyber-corner-tr"></div>
             <div className="cyber-corner-bl"></div>
             <div className="cyber-corner-br"></div>
-            
+
             <div className="results-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <Terminal size={18} style={{ color: 'var(--primary)' }} />
                 <h3>SEC-OPS REPORT NODE</h3>
               </div>
               <div className="tab-buttons">
-                <button 
+                <button
                   className={`tab-btn ${resultSubTab === 'dashboard' ? 'active' : ''}`}
                   onClick={() => setResultSubTab('dashboard')}
                 >
                   <Eye size={14} /> Tactical Dashboard
                 </button>
-                <button 
+                <button
                   className={`tab-btn ${resultSubTab === 'json' ? 'active' : ''}`}
                   onClick={() => setResultSubTab('json')}
                 >
                   <FileCode size={14} /> RAW STDOUT JSON
+                </button>
+                <button
+                  className="tab-btn"
+                  onClick={() => window.open(`${API_BASE}/report/${results.id}`, '_blank')}
+                  style={{ background: 'var(--primary)', color: 'var(--bg-dark)' }}
+                >
+                  <FileText size={14} /> GENERATE REPORT
                 </button>
               </div>
             </div>
 
             {/* Verdict Alert banner */}
             {results.results?.analysis_verdict && (
-              <div className={`verdict-banner ${
-                results.results.analysis_verdict.toLowerCase().includes('critical') || results.results.analysis_verdict.toLowerCase().includes('high') || results.results.analysis_verdict.toLowerCase().includes('malicious')
+              <div className={`verdict-banner ${results.results.analysis_verdict.toLowerCase().includes('critical') || results.results.analysis_verdict.toLowerCase().includes('high') || results.results.analysis_verdict.toLowerCase().includes('malicious')
                   ? 'danger' : results.results.analysis_verdict.toLowerCase().includes('medium') || results.results.analysis_verdict.toLowerCase().includes('suspicious')
-                  ? 'warning' : 'success'
-              }`}>
+                    ? 'warning' : 'success'
+                }`}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <AlertTriangle size={24} />
                   <div>
@@ -748,19 +758,19 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
     );
   }
 
-  switch(tool) {
+  switch (tool) {
     case 'exiftool': {
-      const keys = Object.keys(data).filter(k => 
-        k.toLowerCase().includes(filter.toLowerCase()) || 
+      const keys = Object.keys(data).filter(k =>
+        k.toLowerCase().includes(filter.toLowerCase()) ||
         String(data[k]).toLowerCase().includes(filter.toLowerCase())
       );
-      
+
       return (
         <div className="report-exif">
           <div className="report-actions">
             <Search size={14} className="filter-icon" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Filter metadata keys (GPS, timestamps, metadata tag)..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
@@ -803,7 +813,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       const offset = circ - (score / 100) * circ;
       const flags = data.threat_flags || [];
       const perms = data.permissions || [];
-      
+
       return (
         <div className="report-androguard">
           <div className="mobsf-stats-grid">
@@ -815,14 +825,14 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               <div className="gauge-container">
                 <svg width="120" height="120" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.05)" strokeWidth="6" fill="transparent" />
-                  <circle cx="50" cy="50" r="45" 
-                          stroke={score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#10b981'} 
-                          strokeWidth="6" 
-                          strokeDasharray={circ} 
-                          strokeDashoffset={offset}
-                          strokeLinecap="round"
-                          fill="transparent" 
-                          transform="rotate(-90 50 50)" />
+                  <circle cx="50" cy="50" r="45"
+                    stroke={score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#10b981'}
+                    strokeWidth="6"
+                    strokeDasharray={circ}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    transform="rotate(-90 50 50)" />
                   <text x="50" y="55" textAnchor="middle" fill="#fff" fontSize="18" fontWeight="bold">
                     {score}
                   </text>
@@ -888,7 +898,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                     <div key={idx} className="remediation-item" style={{ borderLeft: '3px solid #ef4444' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <AlertTriangle size={14} className="text-danger" />
-                        <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>Detection #{idx+1}</span>
+                        <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>Detection #{idx + 1}</span>
                       </div>
                       <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{flag}</p>
                     </div>
@@ -912,9 +922,9 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                   perms.map((perm, idx) => {
                     const isDangerous = perm.toLowerCase().includes('write_') || perm.toLowerCase().includes('read_') || perm.toLowerCase().includes('send_') || perm.toLowerCase().includes('system_') || perm.toLowerCase().includes('alert');
                     return (
-                      <div key={idx} style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                      <div key={idx} style={{
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '0.4rem 0.5rem',
                         borderBottom: '1px solid rgba(255,255,255,0.02)',
@@ -935,14 +945,82 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       );
     }
 
+    case 'ghidra': {
+      return (
+        <div className="report-generic">
+          <div className="profile-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(0, 240, 255, 0.2)', paddingBottom: '1rem' }}>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}>
+              <Cpu size={18} />
+              GHIDRA REVERSE ENGINEERING
+            </h4>
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+              <span className="badge warning">{data.metadata?.format || 'Unknown Format'}</span>
+              <span className="badge">{data.metadata?.architecture || 'Unknown Arch'}</span>
+              <span className="badge">Functions: {data.functions_count || 0}</span>
+            </div>
+          </div>
+          
+          {data.decompiled_code ? (
+            <div className="code-block-wrapper" style={{ marginTop: '1rem' }}>
+              <h5 style={{ color: '#a5b4fc', marginBottom: '0.5rem' }}>Decompiled C-Code Snippets</h5>
+              <pre style={{ 
+                background: '#0a0a0a', 
+                padding: '1rem', 
+                borderRadius: '4px', 
+                border: '1px solid #333',
+                maxHeight: '600px',
+                overflow: 'auto',
+                color: '#10b981',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                whiteSpace: 'pre-wrap'
+              }}>
+                {data.decompiled_code}
+              </pre>
+            </div>
+          ) : (
+            <p style={{ color: 'var(--text-muted)' }}>No decompiled code extracted.</p>
+          )}
+
+          {data.functions && data.functions.length > 0 && (
+            <div style={{ marginTop: '2rem' }}>
+              <h5 style={{ color: '#a5b4fc', marginBottom: '0.5rem' }}>Extracted Functions (Top 100)</h5>
+              <div className="metadata-table-wrapper">
+                <table className="metadata-table">
+                  <thead>
+                    <tr>
+                      <th>Address</th>
+                      <th>Name</th>
+                      <th>Signature</th>
+                      <th>Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.functions.map((f, i) => (
+                      <tr key={i}>
+                        <td className="prop-name" style={{ fontFamily: 'monospace' }}>{f.address}</td>
+                        <td className="prop-val">{f.name}</td>
+                        <td className="prop-val" style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>{f.signature}</td>
+                        <td className="prop-val">{f.size} bytes</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     case 'mobsf': {
       const score = data.threat_score || 0;
-      const circ = 2 * Math.PI * 45; 
+      const circ = 2 * Math.PI * 45;
       const offset = circ - (score / 100) * circ;
       const mSummary = data.mobsf_summary || {};
       const fSummary = data.feature_summary || {};
       const breakdown = data.risk_breakdown || {};
-      
+
       return (
         <div className="report-mobsf-dashboard">
           <div className="mobsf-stats-grid">
@@ -954,14 +1032,14 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               <div className="gauge-container">
                 <svg width="120" height="120" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.05)" strokeWidth="6" fill="transparent" />
-                  <circle cx="50" cy="50" r="45" 
-                          stroke={score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#10b981'} 
-                          strokeWidth="6" 
-                          strokeDasharray={circ} 
-                          strokeDashoffset={offset}
-                          strokeLinecap="round"
-                          fill="transparent" 
-                          transform="rotate(-90 50 50)" />
+                  <circle cx="50" cy="50" r="45"
+                    stroke={score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#10b981'}
+                    strokeWidth="6"
+                    strokeDasharray={circ}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    transform="rotate(-90 50 50)" />
                   <text x="50" y="55" textAnchor="middle" fill="#fff" fontSize="18" fontWeight="bold">
                     {score}
                   </text>
@@ -986,7 +1064,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                 <div><span>Version:</span> <strong>{mSummary.version || 'N/A'}</strong></div>
                 <div><span>Target SDK:</span> <strong>API {mSummary.target_sdk || 'N/A'}</strong></div>
                 <div><span>Min SDK:</span> <strong>API {mSummary.min_sdk || 'N/A'}</strong></div>
-                <div><span>App Size:</span> <strong>{mSummary.size ? (mSummary.size / (1024*1024)).toFixed(2) + ' MB' : 'N/A'}</strong></div>
+                <div><span>App Size:</span> <strong>{mSummary.size ? (mSummary.size / (1024 * 1024)).toFixed(2) + ' MB' : 'N/A'}</strong></div>
               </div>
               {data.pdf_report_url && (
                 <div style={{ marginTop: '1.25rem' }}>
@@ -1040,7 +1118,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                       <span>{breakdown[k]}%</span>
                     </div>
                     <div className="progress-bar-bg">
-                      <div className="progress-fill" style={{ 
+                      <div className="progress-fill" style={{
                         width: `${breakdown[k]}%`,
                         backgroundColor: breakdown[k] >= 70 ? '#ef4444' : breakdown[k] >= 40 ? '#f59e0b' : '#10b981'
                       }}></div>
@@ -1081,7 +1159,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
 
     case 'network': {
       if (data.error) return <div className="verdict-banner danger">{data.error}</div>;
-      
+
       return (
         <div className="report-network">
           <h4>PCAP PACKET DUMP ANALYSIS ({data.scan_type || 'parsed'})</h4>
@@ -1151,7 +1229,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                   <div><span>Uncommon Downloads:</span> <strong>{gs.uncommon_downloads ? "YES (DETECTED)" : "NO"}</strong></div>
                 </div>
               </div>
-              
+
               <div className="stat-card cyber-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
                 <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1214,7 +1292,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                   </div>
                 </div>
               </div>
-              
+
               <div className="stat-card cyber-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
                 <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1299,7 +1377,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                   </div>
                 )}
               </div>
-              
+
               <div className="stat-card cyber-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
                 <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1323,7 +1401,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
         );
       }
 
-      
+
       let whoisRender = null;
       if (data.whois_info) {
         const wi = data.whois_info;
@@ -1359,12 +1437,12 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                 <h3 style={{ color: color, textShadow: `0 0 10px rgba(${agg.verdict === "SAFE" ? '16, 185, 129' : '239, 68, 68'}, 0.5)`, marginBottom: '1rem', textAlign: 'center' }}>
                   UNIVERSAL ALGORITHM VERDICT: {agg.verdict}
                 </h3>
-                
+
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.5rem' }}>
                   <div style={{ fontSize: '3rem', fontWeight: 'bold', color: color }}>{agg.risk_score}</div>
                   <div style={{ fontSize: '1rem', color: 'var(--text-muted)', marginLeft: '0.5rem', marginTop: '1.5rem' }}>/ 100 RISK SCORE</div>
                 </div>
-                
+
                 <div>
                   <h5 style={{ color: 'var(--text-muted)', marginBottom: '0.5rem', borderBottom: '1px solid rgba(0, 240, 255, 0.2)', paddingBottom: '0.5rem' }}>CONTRIBUTING FACTORS:</h5>
                   <ul style={{ listStyleType: 'none', padding: 0, margin: 0 }}>
@@ -1380,7 +1458,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
           </div>
         );
       }
-      
+
       if (gsRender || mlRender || usRender || pdRender || aggRender || whoisRender) {
 
         return (
@@ -1397,7 +1475,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       }
 
       const isIP = data.query || data.ip;
-      
+
       return (
         <div className="report-intel">
           <div className="mobsf-stats-grid">
@@ -1413,7 +1491,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                 <div><span>Coordinates:</span> <strong>Lat: {data.lat || 'N/A'}, Lon: {data.lon || 'N/A'}</strong></div>
               </div>
             </div>
-            
+
             <div className="stat-card cyber-panel" style={{ flex: 1 }}>
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1486,18 +1564,18 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       const solved = data.success === true || data.status === 'Success';
       return (
         <div className="report-brute">
-          <div className="stat-card cyber-panel" style={{ 
+          <div className="stat-card cyber-panel" style={{
             borderLeft: `4px solid ${solved ? '#10b981' : '#ef4444'}`,
             backgroundColor: solved ? 'rgba(16, 185, 129, 0.03)' : 'rgba(239, 68, 68, 0.03)'
           }}>
             <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
             <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
-            
+
             <h4 style={{ color: solved ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {solved ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
               CRACK STATUS: {solved ? 'KEY RESOLVED' : 'DICTIONARY EXHAUSTED'}
             </h4>
-            
+
             <div className="profile-grid" style={{ marginTop: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
               <div><span>Target node:</span> <strong>{data.target || 'N/A'}</strong></div>
               <div><span>Attempts tried:</span> <strong>{data.attempts_tried || data.attempts || 0}</strong></div>
@@ -1517,7 +1595,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
     default: {
       const keys = Object.keys(data);
       if (keys.length === 0) return <p style={{ color: 'var(--text-muted)' }}>No parseable data fields resolved by engine.</p>;
-      
+
       return (
         <div className="report-generic">
           <h4>PARSED PROPERTIES</h4>
