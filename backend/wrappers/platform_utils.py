@@ -80,9 +80,14 @@ def find_binary(name: str, windows_names: list = None, extra_paths: list = None)
 # ── John the Ripper ───────────────────────────────────────────────────────────
 def get_john_binary() -> str | None:
     if IS_WINDOWS:
-        return find_binary("john", ["john.exe", "john"],
-                           extra_paths=[r"C:\Program Files\John the Ripper",
-                                        r"C:\John\run"])
+        # Search versioned subdirs: plugins/john/john-X.Y.Z-win64/run/
+        john_paths = []
+        john_root = _PLUGINS_DIR / "john"
+        for sub in john_root.glob("john-*"):
+            john_paths.append(str(sub / "run"))
+        john_paths.append(str(john_root / "run"))  # flat fallback
+        john_paths += [r"C:\Program Files\John the Ripper", r"C:\John\run"]
+        return find_binary("john", ["john.exe", "john"], extra_paths=john_paths)
     # Linux: common locations
     for path in ["/usr/sbin/john", "/usr/bin/john", "/usr/local/bin/john"]:
         if os.path.exists(path):
@@ -94,9 +99,16 @@ JOHN_BIN = get_john_binary()
 
 # John built-in wordlist
 def get_john_wordlist() -> str | None:
+    # Search versioned subdirs first
+    john_root = _PLUGINS_DIR / "john"
+    for sub in john_root.glob("john-*"):
+        candidate = sub / "run" / "password.lst"
+        if candidate.exists():
+            return str(candidate)
     candidates = [
-        "/usr/share/john/password.lst",        # Debian/Ubuntu
-        "/usr/local/share/john/password.lst",  # Homebrew macOS
+        str(john_root / "run" / "password.lst"),  # flat fallback
+        "/usr/share/john/password.lst",
+        "/usr/local/share/john/password.lst",
         r"C:\Program Files\John the Ripper\run\password.lst",
     ]
     for c in candidates:
@@ -175,8 +187,14 @@ VOLATILITY_BIN = get_volatility_binary()
 def get_sleuthkit_tool(tool: str) -> str:
     """Return the path to a Sleuth Kit tool, e.g. mmls, fls, fsstat, mactime."""
     if IS_WINDOWS:
-        found = find_binary(tool, [f"{tool}.exe"],
-                             extra_paths=[str(_PLUGINS_DIR / "sleuthkit" / "bin")])
+        # Search both flat and versioned subdirectory layouts
+        sk_paths = []
+        sk_root = _PLUGINS_DIR / "sleuthkit"
+        # Versioned: plugins/sleuthkit/sleuthkit-X.Y.Z-win32/bin
+        for sub in sk_root.glob("sleuthkit-*"):
+            sk_paths.append(str(sub / "bin"))
+        sk_paths.append(str(sk_root / "bin"))  # flat fallback
+        found = find_binary(tool, [f"{tool}.exe"], extra_paths=sk_paths)
         return found or tool
     return find_binary(tool) or tool
 

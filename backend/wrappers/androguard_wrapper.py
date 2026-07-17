@@ -633,19 +633,40 @@ class AdvancedAPKAnalyzer:
         return hashes
     
     def _extract_certificate_info(self) -> Optional[CertificateInfo]:
-        """Extract signing certificate information."""
+        """Extract signing certificate information.
+        Newer androguard requires get_certificate(filename) — we auto-detect the cert file.
+        """
         try:
-            cert = self.apk.get_certificate()
+            # Auto-detect signing certificate filename (META-INF/*.RSA / *.DSA / *.EC)
+            cert_filename = None
+            for f in self.apk.get_files():
+                upper = f.upper()
+                if upper.startswith("META-INF/") and any(
+                    upper.endswith(ext) for ext in (".RSA", ".DSA", ".EC")
+                ):
+                    cert_filename = f
+                    break
+
+            if cert_filename is None:
+                return None
+
+            cert = self.apk.get_certificate(cert_filename)
             if cert:
+                def _fp(algo):
+                    try:
+                        return cert.fingerprint(algo).hex()
+                    except Exception:
+                        return "Unknown"
+
                 return CertificateInfo(
                     serial_number=str(cert.serial_number),
-                    issuer=str(cert.issuer),
-                    subject=str(cert.subject),
-                    valid_from=str(cert.not_valid_before) if hasattr(cert, 'not_valid_before') else 'Unknown',
-                    valid_to=str(cert.not_valid_after) if hasattr(cert, 'not_valid_after') else 'Unknown',
-                    fingerprint_md5=cert.fingerprint('md5') if hasattr(cert, 'fingerprint') else 'Unknown',
-                    fingerprint_sha1=cert.fingerprint('sha1') if hasattr(cert, 'fingerprint') else 'Unknown',
-                    fingerprint_sha256=cert.fingerprint('sha256') if hasattr(cert, 'fingerprint') else 'Unknown',
+                    issuer=str(cert.issuer.human_friendly) if hasattr(cert.issuer, 'human_friendly') else str(cert.issuer),
+                    subject=str(cert.subject.human_friendly) if hasattr(cert.subject, 'human_friendly') else str(cert.subject),
+                    valid_from=str(cert['tbs_certificate']['validity']['not_before'].native) if hasattr(cert, '__getitem__') else 'Unknown',
+                    valid_to=str(cert['tbs_certificate']['validity']['not_after'].native) if hasattr(cert, '__getitem__') else 'Unknown',
+                    fingerprint_md5=_fp('md5'),
+                    fingerprint_sha1=_fp('sha1'),
+                    fingerprint_sha256=_fp('sha256'),
                     is_debug='debug' in str(cert.subject).lower(),
                     is_self_signed=cert.issuer == cert.subject
                 )

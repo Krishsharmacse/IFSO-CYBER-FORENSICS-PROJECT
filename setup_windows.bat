@@ -9,11 +9,11 @@ echo   CyberX Forensics Platform - Windows Setup
 echo ============================================================
 echo.
 
-:: Check Python version
-python --version >nul 2>&1
+:: Check uv version
+uv --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH.
-    echo         Download from: https://www.python.org/downloads/
+    echo [ERROR] uv is not installed or not in PATH.
+    echo         Download from: https://github.com/astral-sh/uv
     exit /b 1
 )
 
@@ -25,7 +25,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [OK] Python and Node.js found.
+echo [OK] uv and Node.js found.
 echo.
 
 :: ── Backend Python environment ────────────────────────────────
@@ -34,7 +34,7 @@ echo [1/5] Setting up Python virtual environment...
 cd /d "%~dp0"
 
 if not exist ".venv" (
-    python -m venv .venv
+    uv venv
     echo       Created .venv
 ) else (
     echo       .venv already exists, skipping creation.
@@ -42,18 +42,32 @@ if not exist ".venv" (
 
 call .venv\Scripts\activate.bat
 
+:: Add Windows Defender Exclusion for the project root if running as Admin
+net session >nul 2>&1
+if %errorLevel% == 0 (
+    echo [INFO] Detected Administrator privileges. Adding Windows Defender exclusion for project directory to prevent false-positives (e.g. impacket)...
+    powershell -Command "Add-MpPreference -ExclusionPath '%~dp0' -ErrorAction SilentlyContinue"
+) else (
+    echo [WARNING] Not running as Administrator. Windows Defender might block 'impacket' installation.
+    echo           If installation fails due to antivirus, re-run this script as Administrator.
+)
+echo.
+
 echo [2/5] Installing Python dependencies...
-pip install --upgrade pip --quiet
-pip install ^
+uv pip install ^
     fastapi uvicorn sqlalchemy python-dotenv ^
     yara-python joblib pandas scikit-learn numpy ^
     requests paramiko pyzipper pikepdf ^
     eml-parser python-evtx ^
-    impacket whois ^
+    impacket python-whois ^
     androguard ^
     --quiet
 
 echo       Python packages installed.
+echo.
+
+echo [2.5/5] Downloading and configuring Windows binaries (ExifTool, Steghide)...
+uv run python backend/setup_tools_windows.py
 echo.
 
 :: ── Frontend ──────────────────────────────────────────────────
