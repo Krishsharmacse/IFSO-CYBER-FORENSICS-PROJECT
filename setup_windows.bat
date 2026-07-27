@@ -157,7 +157,7 @@ echo ============================================================
 echo   Setup complete!
 echo.
 echo   To start the platform:
-echo     Backend : cd backend ^&^& ..\venv\Scripts\activate ^&^& uvicorn main:app --reload
+echo     Backend : cd backend ^&^& ..\.venv\Scripts\activate ^&^& uvicorn main:app --reload
 echo     Frontend: cd frontend ^&^& npm run dev
 echo.
 echo   Or use the run_windows.bat shortcut.
