@@ -28,3 +28,5 @@ requests             # HTTP brute force
 paramiko             # SSH brute force
 pyzipper             # AES-encrypted ZIP cracking
 pikepdf              # PDF password cracking
+reportlab            # PDF report generation
+

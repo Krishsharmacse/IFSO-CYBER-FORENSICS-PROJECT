@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import CyberChat from './CyberChat';
 import {
   Shield, FileText, Camera, HardDrive, Activity, Search, Upload, Play,
   Terminal, Cpu, Smartphone, Globe, Network, Mail, List, Image, Key, Zap,
@@ -26,11 +27,13 @@ function App() {
   const [bruteMaxAttempts, setBruteMaxAttempts] = useState(1000);
   const [brutePort, setBrutePort] = useState('');
   const [systemPath, setSystemPath] = useState('');
+  const [ghidraTimeout, setGhidraTimeout] = useState(900);
+  const [ghidraExtractCode, setGhidraExtractCode] = useState(true);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
-  const [resultSubTab, setResultSubTab] = useState('dashboard'); // 'dashboard' | 'json'
+  const [resultSubTab, setResultSubTab] = useState('dashboard');
 
-  // Search and Collapsible Category State
+
   const [sidebarSearch, setSidebarSearch] = useState('');
   const [expandedCategories, setExpandedCategories] = useState({
     static: true,
@@ -39,10 +42,10 @@ function App() {
     logs: true
   });
 
-  // ExifTool result filter state
+
   const [metadataSearch, setMetadataSearch] = useState('');
 
-  // Interactive CLI loader state
+
   const [loaderMessage, setLoaderMessage] = useState('');
   const [loaderSteps, setLoaderSteps] = useState([]);
 
@@ -50,7 +53,7 @@ function App() {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  // Grouped Menu Items (Reintegrated Androguard APK Static Analysis)
+
   const categories = [
     {
       id: 'static',
@@ -91,6 +94,10 @@ function App() {
         {
           id: 'threat_intel', label: 'Threat Intel OSINT', tool: 'OSINT', icon: Globe,
           desc: 'Look up IPs, domains & hashes via abuse lists, VT & Shodan.'
+        },
+        {
+          id: 'ip_resolver', label: 'IP Resolver', tool: 'IP Intelligence', icon: Server,
+          desc: 'Fully resolve IPv4 & IPv6: geo, ASN, reverse DNS, ISP & threat flags.'
         }
       ]
     },
@@ -142,7 +149,7 @@ function App() {
     }
   ];
 
-  // Dynamic console output generator during loading
+
   useEffect(() => {
     let interval;
     if (loading) {
@@ -197,6 +204,16 @@ function App() {
           'Querying Shodan network service scanner...',
           'Fetching DNS WHOIS database record...'
         ],
+        ip_resolver: [
+          'Parsing IP address structure...',
+          'Detecting IP version (v4/v6) and classification...',
+          'Running forward DNS resolution...',
+          'Performing reverse PTR lookup...',
+          'Querying ip-api.com geolocation engine...',
+          'Fetching ISP, ASN, and organization data...',
+          'Supplementing with ipinfo.io intelligence...',
+          'Computing threat flags and risk assessment...'
+        ],
         default: [
           'Spawning sandbox environment...',
           'Mounting input target file...',
@@ -249,7 +266,8 @@ function App() {
       }
       if (activeTab === 'ghidra') {
         endpoint = '/analyze/ghidra';
-        payload.extract_code = true;
+        payload.extract_code = ghidraExtractCode;
+        payload.timeout = parseInt(ghidraTimeout) || 900;
       }
       if (activeTab === 'mobsf') endpoint = '/analyze/mobsf';
 
@@ -271,7 +289,7 @@ function App() {
       if (activeTab === 'hash') endpoint = '/analyze/hash';
       if (activeTab === 'brute') {
         payload = {
-          file_path: filePath, // Just to satisfy generic payload structure if needed, though backend looks at target
+          file_path: filePath,
           mode: bruteMode,
           target: filePath,
           username: bruteUsername,
@@ -287,8 +305,13 @@ function App() {
         endpoint = '/analyze/registry';
         payload = { sam_path: filePath, system_path: systemPath };
       }
+      if (activeTab === 'ip_resolver') {
+        endpoint = '/analyze/ip_resolver';
+        payload = { target: filePath };
+      }
 
-      const res = await axios.post(`${API_BASE}${endpoint}`, payload);
+      const axiosTimeout = activeTab === 'ghidra' ? ((parseInt(ghidraTimeout) || 900) + 5) * 1000 : 0;
+      const res = await axios.post(`${API_BASE}${endpoint}`, payload, axiosTimeout ? { timeout: axiosTimeout } : {});
       setResults(res.data);
     } catch (err) {
       setResults({ status: 'Failed', results: { error: err.message } });
@@ -297,7 +320,7 @@ function App() {
     }
   };
 
-  // Filter sidebar based on search query
+
   const filteredCategories = categories.map(cat => {
     const matchedItems = cat.items.filter(item =>
       item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
@@ -311,21 +334,21 @@ function App() {
     <div className="dashboard-container cyber-grid">
       <div className="scanline"></div>
 
-      {/* Sidebar */}
+      { }
       <aside className="sidebar">
         <div className="cyber-corner-tl"></div>
         <div className="cyber-corner-bl"></div>
 
         <div className="logo glowing-text">
           <Shield size={26} color="#00f0ff" />
-          <span>CYBERX // SOC</span>
+          <span>CYBERX</span>
         </div>
 
         <div className="system-subtitle">
-          <span>SEC-OPS // TERMINAL DEPLOYMENT</span>
+          <span>SEC-OPS</span>
         </div>
 
-        {/* Sidebar Search */}
+        { }
         <div className="sidebar-search">
           <Search size={14} className="search-icon" />
           <input
@@ -384,15 +407,15 @@ function App() {
               <span>PORT: 8000</span>
             </div>
             <div className="status-item security-level">
-              <span>LEVEL: 4 // SECURED</span>
+              <span>LEVEL: 4</span>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
+      { }
       <main className="main-content">
-        {/* Header */}
+        { }
         <header className="header animate-fade-in">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
@@ -409,7 +432,7 @@ function App() {
           </div>
         </header>
 
-        {/* Input Panel */}
+        { }
         <section className="cyber-panel animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <div className="cyber-corner-tl"></div>
           <div className="cyber-corner-tr"></div>
@@ -418,7 +441,7 @@ function App() {
 
           <div className="form-title">
             <Server size={18} style={{ color: 'var(--primary)' }} />
-            <h2>Investigation Setup // Target Parameters</h2>
+            <h2>Investigation Setup</h2>
           </div>
 
           <div className="setup-grid">
@@ -428,7 +451,8 @@ function App() {
                 type="text"
                 className="input-field cyber-input"
                 placeholder={
-                  activeTab === 'autopsy' ? "/path/to/evidence/image.dd or .E01" :
+                  activeTab === 'ip_resolver' ? "8.8.8.8 or 2001:4860:4860::8888" :
+                    activeTab === 'autopsy' ? "/path/to/evidence/image.dd or .E01" :
                     activeTab === 'ghidra' ? "/path/to/malware/sample.exe" :
                       activeTab === 'mobsf' || activeTab === 'androguard' ? "/path/to/mobile/app.apk" :
                         activeTab === 'volatility' ? "/path/to/memory/dump.vmem" :
@@ -449,7 +473,7 @@ function App() {
               />
             </div>
 
-            {/* Dynamic Inputs Based on Active Tool */}
+            { }
             {activeTab === 'yara' && (
               <div className="input-block">
                 <label>YARA Rules Path (.yar)</label>
@@ -461,6 +485,71 @@ function App() {
                   onChange={(e) => setRulesPath(e.target.value)}
                 />
               </div>
+            )}
+
+            {activeTab === 'ghidra' && (
+              <>
+                <div className="input-block">
+                  <label>Analysis Timeout (seconds)</label>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      className="input-field cyber-input"
+                      min={60}
+                      max={3600}
+                      value={ghidraTimeout}
+                      onChange={(e) => setGhidraTimeout(e.target.value)}
+                      style={{ width: '110px' }}
+                    />
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      {[{ v: 300, label: '5m' }, { v: 600, label: '10m' }, { v: 900, label: '15m' }, { v: 1800, label: '30m' }, { v: 3600, label: '1h' }].map(p => (
+                        <button
+                          key={p.v}
+                          type="button"
+                          onClick={() => setGhidraTimeout(p.v)}
+                          style={{
+                            padding: '0.25rem 0.55rem',
+                            fontSize: '0.7rem',
+                            fontFamily: 'monospace',
+                            borderRadius: '4px',
+                            border: `1px solid ${parseInt(ghidraTimeout) === p.v ? 'var(--primary)' : 'rgba(255,255,255,0.12)'}`,
+                            background: parseInt(ghidraTimeout) === p.v ? 'rgba(0,240,255,0.12)' : 'transparent',
+                            color: parseInt(ghidraTimeout) === p.v ? 'var(--primary)' : 'var(--text-muted)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >{p.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '0.3rem', fontFamily: 'monospace' }}>
+                    ⚠ Large binaries (Office, browsers) need 15–60 min. Default: 15 min.
+                  </div>
+                </div>
+                <div className="input-block">
+                  <label>Decompile to C Source</label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {[{ v: true, label: 'YES — Full Decompile' }, { v: false, label: 'NO — Metadata Only' }].map(opt => (
+                      <button
+                        key={String(opt.v)}
+                        type="button"
+                        onClick={() => setGhidraExtractCode(opt.v)}
+                        style={{
+                          padding: '0.35rem 0.85rem',
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          borderRadius: '4px',
+                          border: `1px solid ${ghidraExtractCode === opt.v ? 'var(--primary)' : 'rgba(255,255,255,0.12)'}`,
+                          background: ghidraExtractCode === opt.v ? 'rgba(0,240,255,0.12)' : 'transparent',
+                          color: ghidraExtractCode === opt.v ? 'var(--primary)' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {activeTab === 'autopsy' && (
@@ -638,7 +727,7 @@ function App() {
           </div>
         </section>
 
-        {/* Loading Terminal Animation */}
+        { }
         {loading && (
           <section className="cyber-panel animate-fade-in" style={{ marginTop: '2rem', background: '#04070f', border: '1px solid rgba(0, 240, 255, 0.3)' }}>
             <div className="cyber-corner-tl" style={{ borderColor: '#00f0ff' }}></div>
@@ -654,7 +743,7 @@ function App() {
                 <span className="dot yellow"></span>
                 <span className="dot green"></span>
               </div>
-              <span className="terminal-title">SYS-OPS // ANOMALY_ANALYZER.EXE</span>
+              <span className="terminal-title">SYS-OPS</span>
             </div>
             <div className="terminal-body">
               <div className="terminal-logs">
@@ -670,7 +759,7 @@ function App() {
           </section>
         )}
 
-        {/* Results Section */}
+        { }
         {results && (
           <section className="cyber-panel animate-fade-in" style={{ marginTop: '2rem' }}>
             <div className="cyber-corner-tl"></div>
@@ -706,11 +795,11 @@ function App() {
               </div>
             </div>
 
-            {/* Verdict Alert banner */}
+            { }
             {results.results?.analysis_verdict && (
               <div className={`verdict-banner ${results.results.analysis_verdict.toLowerCase().includes('critical') || results.results.analysis_verdict.toLowerCase().includes('high') || results.results.analysis_verdict.toLowerCase().includes('malicious')
-                  ? 'danger' : results.results.analysis_verdict.toLowerCase().includes('medium') || results.results.analysis_verdict.toLowerCase().includes('suspicious')
-                    ? 'warning' : 'success'
+                ? 'danger' : results.results.analysis_verdict.toLowerCase().includes('medium') || results.results.analysis_verdict.toLowerCase().includes('suspicious')
+                  ? 'warning' : 'success'
                 }`}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <AlertTriangle size={24} />
@@ -722,14 +811,14 @@ function App() {
               </div>
             )}
 
-            {/* Sub-Tab 1: Interactive Dashboard */}
+            { }
             {resultSubTab === 'dashboard' && (
               <div className="interactive-report-container animate-fade-in">
                 {renderInteractiveReport(activeTab, results.results, metadataSearch, setMetadataSearch, API_BASE)}
               </div>
             )}
 
-            {/* Sub-Tab 2: Raw JSON view */}
+            { }
             {resultSubTab === 'json' && (
               <div className="json-container animate-fade-in">
                 <pre className="json-view">
@@ -740,11 +829,319 @@ function App() {
           </section>
         )}
       </main>
+
+      {/* CyberX AI Chatbot */}
+      <CyberChat />
     </div>
   );
 }
 
-// ── CUSTOM INTERACTIVE REPORT BUILDER ──────────────────────────────────────────
+
+function GhidraReport({ data }) {
+  const [activePanel, setActivePanel] = useState('decompiled');
+  const [funcSearch, setFuncSearch] = useState('');
+  const [strSearch, setStrSearch] = useState('');
+  const [importSearch, setImportSearch] = useState('');
+
+  const meta = data?.metadata || {};
+  const functions = data?.functions || [];
+  const strings = data?.strings || [];
+  const ghidraLog = data?.ghidra_log || [];
+  const errors = data?.errors || [];
+  const warnings = data?.warnings || [];
+  const sections = meta.sections || [];
+  const imports = meta.imports || [];
+  const exports = meta.exports || [];
+  const fileSizeMB = meta.file_size ? (meta.file_size / (1024 * 1024)).toFixed(2) : '?';
+
+  const filteredFunctions = functions.filter(f =>
+    f.name?.toLowerCase().includes(funcSearch.toLowerCase()) ||
+    f.address?.toLowerCase().includes(funcSearch.toLowerCase()) ||
+    f.signature?.toLowerCase().includes(funcSearch.toLowerCase())
+  );
+  const filteredStrings = strings.filter(s => String(s).toLowerCase().includes(strSearch.toLowerCase()));
+  const filteredImports = imports.filter(imp => String(imp).toLowerCase().includes(importSearch.toLowerCase()));
+
+  const btnStyle = (id) => ({
+    padding: '0.4rem 0.9rem', borderRadius: '4px',
+    border: `1px solid ${activePanel === id ? 'var(--primary)' : 'rgba(255,255,255,0.1)'}`,
+    background: activePanel === id ? 'rgba(0,240,255,0.12)' : 'transparent',
+    color: activePanel === id ? 'var(--primary)' : 'var(--text-muted)',
+    cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem',
+    fontWeight: activePanel === id ? 'bold' : 'normal',
+    letterSpacing: '0.05em', transition: 'all 0.2s',
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      { }
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem' }}>
+        {[
+          { label: 'FORMAT', value: meta.format || 'Unknown', color: '#f59e0b' },
+          { label: 'ARCHITECTURE', value: meta.architecture || 'Unknown', color: '#00f0ff' },
+          { label: 'FUNCTIONS', value: (data?.functions_count || 0).toLocaleString(), color: '#a5b4fc' },
+          { label: 'FILE SIZE', value: `${fileSizeMB} MB`, color: '#10b981' },
+        ].map(s => (
+          <div key={s.label} className="cyber-panel" style={{ padding: '1rem', textAlign: 'center', position: 'relative' }}>
+            <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+            <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.1em', marginBottom: '0.4rem', fontFamily: 'monospace' }}>{s.label}</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: s.color, fontFamily: 'monospace' }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      { }
+      {(meta.md5 || meta.sha256) && (
+        <div className="cyber-panel" style={{ padding: '1rem', position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', marginBottom: '0.75rem', fontWeight: 'bold' }}>🔐 CRYPTOGRAPHIC HASHES</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            {meta.md5 && <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginBottom: '0.2rem' }}>MD5</div><code style={{ fontSize: '0.78rem', color: '#10b981', wordBreak: 'break-all' }}>{meta.md5}</code></div>}
+            {meta.sha256 && <div><div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginBottom: '0.2rem' }}>SHA-256</div><code style={{ fontSize: '0.78rem', color: '#10b981', wordBreak: 'break-all' }}>{meta.sha256}</code></div>}
+          </div>
+          {data?.status && (
+            <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>STATUS:</span>
+              <span style={{ fontSize: '0.75rem', color: data.success ? '#10b981' : '#ef4444', fontWeight: 'bold', fontFamily: 'monospace' }}>{data.status}</span>
+              {data.duration_seconds && <><span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>DURATION:</span><span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace' }}>{data.duration_seconds.toFixed(1)}s</span></>}
+            </div>
+          )}
+        </div>
+      )}
+
+      { }
+      {errors.length > 0 && (
+        <div className="verdict-banner danger" style={{ padding: '0.75rem 1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}><AlertTriangle size={16} /><strong style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>ANALYSIS ERRORS ({errors.length})</strong></div>
+          {errors.map((e, i) => <div key={i} style={{ fontSize: '0.75rem', color: '#fca5a5', fontFamily: 'monospace', marginTop: '0.2rem' }}>• {e}</div>)}
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="verdict-banner warning" style={{ padding: '0.75rem 1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}><AlertTriangle size={16} /><strong style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>WARNINGS ({warnings.length})</strong></div>
+          {warnings.slice(0, 5).map((w, i) => <div key={i} style={{ fontSize: '0.75rem', color: '#fde68a', fontFamily: 'monospace', marginTop: '0.2rem' }}>• {w}</div>)}
+        </div>
+      )}
+
+      { }
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {[
+          { id: 'decompiled', label: `⬡ DECOMPILED C (${data?.functions_count || 0} funcs)` },
+          { id: 'functions', label: `⬡ FUNCTIONS (${functions.length})` },
+          { id: 'sections', label: `⬡ SECTIONS (${sections.length})` },
+          { id: 'imports', label: `⬡ IMPORTS (${imports.length})` },
+          { id: 'exports', label: `⬡ EXPORTS (${exports.length})` },
+          { id: 'strings', label: `⬡ STRINGS (${strings.length})` },
+          { id: 'log', label: `⬡ GHIDRA LOG (${ghidraLog.length})` },
+        ].map(p => <button key={p.id} style={btnStyle(p.id)} onClick={() => setActivePanel(p.id)}>{p.label}</button>)}
+      </div>
+
+      { }
+      {activePanel === 'decompiled' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em' }}>⬡ DECOMPILED C SOURCE (up to 150 functions)</span>
+            {data?.decompiled_code && (
+              <button onClick={() => navigator.clipboard.writeText(data.decompiled_code)} style={{ background: 'rgba(0,240,255,0.1)', border: '1px solid rgba(0,240,255,0.3)', color: 'var(--primary)', borderRadius: '4px', padding: '0.25rem 0.6rem', cursor: 'pointer', fontSize: '0.7rem', fontFamily: 'monospace' }}>📋 COPY</button>
+            )}
+          </div>
+          {data?.decompiled_code ? (
+            <pre style={{ margin: 0, padding: '0.75rem 1.25rem 1.25rem', color: '#10b981', fontFamily: '"Fira Code","Cascadia Code",monospace', fontSize: '0.82rem', whiteSpace: 'pre-wrap', maxHeight: '70vh', overflow: 'auto', lineHeight: '1.6' }}>{data.decompiled_code}</pre>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+              <Cpu size={32} style={{ display: 'block', margin: '0 auto 0.75rem', opacity: 0.3 }} />
+              No decompiled code — Ghidra export script may not have run or analysis failed.
+            </div>
+          )}
+        </div>
+      )}
+
+      { }
+      {activePanel === 'functions' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>⬡ EXTRACTED FUNCTIONS</span>
+            <div style={{ position: 'relative', flex: 1, maxWidth: '340px' }}>
+              <Search size={13} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input type="text" placeholder="Search name, address, signature..." value={funcSearch} onChange={e => setFuncSearch(e.target.value)} className="filter-input" style={{ paddingLeft: '2rem', width: '100%' }} />
+            </div>
+          </div>
+          {filteredFunctions.length > 0 ? (
+            <div className="metadata-table-wrapper" style={{ maxHeight: '65vh', overflow: 'auto', margin: '0 1.25rem 1.25rem' }}>
+              <table className="metadata-table">
+                <thead><tr><th>#</th><th>ADDRESS</th><th>NAME</th><th>SIZE</th><th>XREFS</th><th>SIGNATURE</th></tr></thead>
+                <tbody>
+                  {filteredFunctions.map((f, i) => (
+                    <tr key={i}>
+                      <td style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontFamily: 'monospace' }}>{i + 1}</td>
+                      <td className="prop-name" style={{ fontFamily: 'monospace', color: '#00f0ff', fontSize: '0.78rem' }}>{f.address}</td>
+                      <td className="prop-val" style={{ color: f.name?.startsWith('FUN_') ? '#9ca3af' : '#fff', fontWeight: f.name?.startsWith('FUN_') ? 'normal' : 'bold' }}>{f.name}</td>
+                      <td className="prop-val" style={{ color: '#a5b4fc', fontFamily: 'monospace' }}>{f.size?.toLocaleString()} B</td>
+                      <td className="prop-val" style={{ fontSize: '0.72rem', color: f.xrefs_to?.length > 0 ? '#f59e0b' : 'var(--text-muted)' }}>
+                        {f.xrefs_to?.length > 0 ? <span title={f.xrefs_to.join(', ')}>{f.xrefs_to.length} xref{f.xrefs_to.length !== 1 ? 's' : ''}</span> : '—'}
+                      </td>
+                      <td className="prop-val" style={{ fontSize: '0.72rem', color: '#6b7280', fontFamily: 'monospace', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.signature}>{f.signature || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{functions.length === 0 ? 'No functions extracted — Ghidra export script may not have run.' : 'No functions match search.'}</div>
+          )}
+        </div>
+      )}
+
+      { }
+      {activePanel === 'sections' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.75rem' }}><span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em' }}>⬡ PE / ELF SECTIONS</span></div>
+          {sections.length > 0 ? (
+            <div className="metadata-table-wrapper" style={{ maxHeight: '65vh', overflow: 'auto', margin: '0 1.25rem 1.25rem' }}>
+              <table className="metadata-table">
+                <thead><tr><th>NAME</th><th>VIRTUAL ADDR</th><th>VIRT SIZE</th><th>RAW SIZE</th><th>CHARACTERISTICS</th></tr></thead>
+                <tbody>
+                  {sections.map((s, i) => (
+                    <tr key={i}>
+                      <td className="prop-name" style={{ fontFamily: 'monospace', color: '#10b981' }}>{s.name || s.Name || '?'}</td>
+                      <td className="prop-val" style={{ fontFamily: 'monospace', color: '#00f0ff', fontSize: '0.78rem' }}>{s.virtual_address || s.address || '?'}</td>
+                      <td className="prop-val" style={{ fontFamily: 'monospace' }}>{s.virtual_size?.toLocaleString() || s.size?.toLocaleString() || '?'}</td>
+                      <td className="prop-val" style={{ fontFamily: 'monospace' }}>{s.raw_size?.toLocaleString() || '—'}</td>
+                      <td className="prop-val" style={{ fontFamily: 'monospace', color: '#f59e0b', fontSize: '0.75rem' }}>{s.characteristics || s.type || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>No section data extracted.</div>
+          )}
+        </div>
+      )}
+
+      { }
+      {activePanel === 'imports' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>⬡ IMPORTED SYMBOLS ({imports.length})</span>
+            <div style={{ position: 'relative', flex: 1, maxWidth: '320px' }}>
+              <Search size={13} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input type="text" placeholder="Filter imports..." value={importSearch} onChange={e => setImportSearch(e.target.value)} className="filter-input" style={{ paddingLeft: '2rem', width: '100%' }} />
+            </div>
+          </div>
+          {filteredImports.length > 0 ? (
+            <div style={{ padding: '0 1.25rem 1.25rem', maxHeight: '65vh', overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '0.4rem' }}>
+              {filteredImports.map((imp, i) => {
+                const parts = String(imp).split('!');
+                const dll = parts[0]; const fn = parts[1];
+                const danger = /Virtual|WriteProcessMemory|LoadLibrary|CreateRemoteThread|WinExec|ShellExecute|Inject|RegOpenKey/i.test(imp);
+                return (
+                  <div key={i} style={{ padding: '0.35rem 0.6rem', background: danger ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.02)', border: `1px solid ${danger ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '3px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {danger && <AlertTriangle size={11} style={{ color: '#ef4444', flexShrink: 0 }} />}
+                    <code style={{ fontSize: '0.72rem', color: danger ? '#fca5a5' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {fn ? <><span style={{ color: '#f59e0b' }}>{dll}</span>!<span style={{ color: danger ? '#fca5a5' : '#e5e7eb' }}>{fn}</span></> : imp}
+                    </code>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>No imports found or not a PE file.</div>
+          )}
+        </div>
+      )}
+
+      { }
+      {activePanel === 'exports' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.75rem' }}><span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em' }}>⬡ EXPORTED SYMBOLS ({exports.length})</span></div>
+          {exports.length > 0 ? (
+            <div style={{ padding: '0 1.25rem 1.25rem', maxHeight: '65vh', overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: '0.4rem' }}>
+              {exports.map((exp, i) => (
+                <div key={i} style={{ padding: '0.3rem 0.6rem', background: 'rgba(165,180,252,0.05)', border: '1px solid rgba(165,180,252,0.15)', borderRadius: '3px' }}>
+                  <code style={{ fontSize: '0.72rem', color: '#a5b4fc' }}>{exp}</code>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>No exports found.</div>
+          )}
+        </div>
+      )}
+
+      { }
+      {activePanel === 'strings' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em', whiteSpace: 'nowrap' }}>⬡ EXTRACTED STRINGS (up to 500){meta.strings_count ? ` — ${meta.strings_count.toLocaleString()} total` : ''}</span>
+            <div style={{ position: 'relative', flex: 1, maxWidth: '320px' }}>
+              <Search size={13} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input type="text" placeholder="Search strings..." value={strSearch} onChange={e => setStrSearch(e.target.value)} className="filter-input" style={{ paddingLeft: '2rem', width: '100%' }} />
+            </div>
+          </div>
+          {filteredStrings.length > 0 ? (
+            <div style={{ padding: '0 1.25rem 1.25rem', maxHeight: '65vh', overflow: 'auto' }}>
+              {filteredStrings.map((s, i) => {
+                const str = String(s).replace(/^"|"$/g, '');
+                const isUrl = /https?:\/\//i.test(str);
+                const isCmd = /cmd|powershell|exec|shell|run|exploit/i.test(str);
+                const isPath = /\\|\/[a-z]/i.test(str);
+                const color = isCmd ? '#ef4444' : isUrl ? '#f59e0b' : isPath ? '#a5b4fc' : '#6b7280';
+                return (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.2rem 0', borderBottom: '1px solid rgba(255,255,255,0.02)', alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: '36px' }}>{i + 1}</span>
+                    <code style={{ fontSize: '0.78rem', color, wordBreak: 'break-all', lineHeight: '1.5' }}>{str}</code>
+                    {(isCmd || isUrl) && <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem', borderRadius: '3px', background: isCmd ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', color: isCmd ? '#ef4444' : '#f59e0b', whiteSpace: 'nowrap', marginLeft: 'auto', flexShrink: 0 }}>{isCmd ? 'CMD' : 'URL'}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>No strings extracted.</div>
+          )}
+        </div>
+      )}
+
+      { }
+      {activePanel === 'log' && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '1rem 1.25rem 0.75rem' }}><span style={{ fontSize: '0.75rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em' }}>⬡ GHIDRA STDOUT LOG (last 20 lines)</span></div>
+          <div style={{ padding: '0 1.25rem 1.25rem', maxHeight: '65vh', overflow: 'auto' }}>
+            {ghidraLog.length > 0 ? (
+              <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.78rem', whiteSpace: 'pre-wrap', lineHeight: '1.7' }}>
+                {ghidraLog.map((line, i) => (
+                  <div key={i} style={{ color: line.toLowerCase().includes('error') ? '#ef4444' : line.toLowerCase().includes('warn') ? '#f59e0b' : '#9ca3af' }}>{line}</div>
+                ))}
+              </pre>
+            ) : (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace', paddingTop: '1rem' }}>No log output captured.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
 function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
   if (!data) return <p style={{ color: 'var(--text-muted)' }}>No node metadata returned by engine.</p>;
   if (data.error) {
@@ -817,7 +1214,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       return (
         <div className="report-androguard">
           <div className="mobsf-stats-grid">
-            {/* Score Ring */}
+            { }
             <div className="stat-card score-gauge-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -846,7 +1243,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               </span>
             </div>
 
-            {/* Profile */}
+            { }
             <div className="stat-card app-profile-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -860,7 +1257,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               </div>
             </div>
 
-            {/* Component Counts */}
+            { }
             <div className="stat-card components-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -887,7 +1284,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
           </div>
 
           <div className="mobsf-details-grid" style={{ marginTop: '1.5rem' }}>
-            {/* Threat Flags */}
+            { }
             <div className="stat-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -912,7 +1309,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               </div>
             </div>
 
-            {/* Permissions list */}
+            { }
             <div className="stat-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -945,73 +1342,9 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       );
     }
 
-    case 'ghidra': {
-      return (
-        <div className="report-generic">
-          <div className="profile-header" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(0, 240, 255, 0.2)', paddingBottom: '1rem' }}>
-            <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}>
-              <Cpu size={18} />
-              GHIDRA REVERSE ENGINEERING
-            </h4>
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-              <span className="badge warning">{data.metadata?.format || 'Unknown Format'}</span>
-              <span className="badge">{data.metadata?.architecture || 'Unknown Arch'}</span>
-              <span className="badge">Functions: {data.functions_count || 0}</span>
-            </div>
-          </div>
-          
-          {data.decompiled_code ? (
-            <div className="code-block-wrapper" style={{ marginTop: '1rem' }}>
-              <h5 style={{ color: '#a5b4fc', marginBottom: '0.5rem' }}>Decompiled C-Code Snippets</h5>
-              <pre style={{ 
-                background: '#0a0a0a', 
-                padding: '1rem', 
-                borderRadius: '4px', 
-                border: '1px solid #333',
-                maxHeight: '600px',
-                overflow: 'auto',
-                color: '#10b981',
-                fontFamily: 'monospace',
-                fontSize: '0.85rem',
-                whiteSpace: 'pre-wrap'
-              }}>
-                {data.decompiled_code}
-              </pre>
-            </div>
-          ) : (
-            <p style={{ color: 'var(--text-muted)' }}>No decompiled code extracted.</p>
-          )}
+    case 'ghidra':
+      return <GhidraReport data={data} />;
 
-          {data.functions && data.functions.length > 0 && (
-            <div style={{ marginTop: '2rem' }}>
-              <h5 style={{ color: '#a5b4fc', marginBottom: '0.5rem' }}>Extracted Functions (Top 100)</h5>
-              <div className="metadata-table-wrapper">
-                <table className="metadata-table">
-                  <thead>
-                    <tr>
-                      <th>Address</th>
-                      <th>Name</th>
-                      <th>Signature</th>
-                      <th>Size</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.functions.map((f, i) => (
-                      <tr key={i}>
-                        <td className="prop-name" style={{ fontFamily: 'monospace' }}>{f.address}</td>
-                        <td className="prop-val">{f.name}</td>
-                        <td className="prop-val" style={{ fontSize: '0.75rem', color: '#9ca3af', fontFamily: 'monospace' }}>{f.signature}</td>
-                        <td className="prop-val">{f.size} bytes</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
 
     case 'mobsf': {
       const score = data.threat_score || 0;
@@ -1024,7 +1357,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       return (
         <div className="report-mobsf-dashboard">
           <div className="mobsf-stats-grid">
-            {/* SVG Score Circle */}
+            { }
             <div className="stat-card score-gauge-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1053,7 +1386,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               </p>
             </div>
 
-            {/* App Profile */}
+            { }
             <div className="stat-card app-profile-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1064,7 +1397,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                 <div><span>Version:</span> <strong>{mSummary.version || 'N/A'}</strong></div>
                 <div><span>Target SDK:</span> <strong>API {mSummary.target_sdk || 'N/A'}</strong></div>
                 <div><span>Min SDK:</span> <strong>API {mSummary.min_sdk || 'N/A'}</strong></div>
-                <div><span>App Size:</span> <strong>{mSummary.size ? (mSummary.size / (1024 * 1024)).toFixed(2) + ' MB' : 'N/A'}</strong></div>
+                <div><span>App Size:</span> <strong>{typeof mSummary.size === 'string' ? mSummary.size : (typeof mSummary.size === 'number' && mSummary.size > 0 ? (mSummary.size / (1024 * 1024)).toFixed(2) + ' MB' : 'N/A')}</strong></div>
               </div>
               {data.pdf_report_url && (
                 <div style={{ marginTop: '1.25rem' }}>
@@ -1075,7 +1408,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               )}
             </div>
 
-            {/* Component Count Card */}
+            { }
             <div className="stat-card components-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1105,7 +1438,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
           </div>
 
           <div className="mobsf-details-grid" style={{ marginTop: '1.5rem' }}>
-            {/* Risk Breakdown progress bars */}
+            { }
             <div className="stat-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1128,7 +1461,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               </div>
             </div>
 
-            {/* Findings list */}
+            { }
             <div className="stat-card cyber-panel">
               <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
               <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
@@ -1200,7 +1533,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               <div className="cyber-corner-bl" style={{ borderColor: '#ef4444' }}></div><div className="cyber-corner-br" style={{ borderColor: '#ef4444' }}></div>
               <AlertTriangle size={48} style={{ color: '#ef4444', flexShrink: 0 }} />
               <div>
-                <h3 style={{ color: '#ef4444', margin: '0 0 0.5rem 0', textShadow: '0 0 10px rgba(239, 68, 68, 0.5)' }}>LOCAL HEURISTICS // {lh.risk_level} RISK DETECTED</h3>
+                <h3 style={{ color: '#ef4444', margin: '0 0 0.5rem 0', textShadow: '0 0 10px rgba(239, 68, 68, 0.5)' }}>LOCAL HEURISTICS</h3>
                 <div style={{ color: 'var(--text-primary)', marginBottom: '0.25rem' }}><strong>Reason:</strong> {lh.reason}</div>
                 <div style={{ color: 'var(--text-muted)' }}><strong>Action:</strong> {lh.recommendation}</div>
               </div>
@@ -1218,16 +1551,16 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               <div className="stat-card cyber-panel" style={{ flex: 1.5 }}>
                 <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
                 <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
-                <h4>GOOGLE SAFE BROWSING // SITE DIAGNOSTICS</h4>
-                <div className="profile-grid">
-                  <div><span>Target Domain:</span> <strong className="glowing-text">{gs.domain}</strong></div>
-                  <div><span>Diagnostic Verdict:</span> <strong style={{ color: gs.is_safe ? '#10b981' : '#ef4444' }}>{gs.status_description}</strong></div>
-                  <div><span>Redirects to Harmful:</span> <strong>{gs.redirects_to_harmful ? "YES (DETECTED)" : "NO"}</strong></div>
-                  <div><span>Installs Unwanted Software:</span> <strong>{gs.installs_unwanted_software ? "YES (DETECTED)" : "NO"}</strong></div>
-                  <div><span>Phishing / Social Engineering:</span> <strong>{gs.is_phishing ? "YES (DETECTED)" : "NO"}</strong></div>
-                  <div><span>Contains Malware:</span> <strong>{gs.contains_malware ? "YES (DETECTED)" : "NO"}</strong></div>
-                  <div><span>Uncommon Downloads:</span> <strong>{gs.uncommon_downloads ? "YES (DETECTED)" : "NO"}</strong></div>
-                </div>
+                <h4>GOOGLE SAFE BROWSING</h4>
+                  <div className="profile-grid">
+                    <div><span>Target Domain:</span> <strong className="glowing-text">{gs.domain}</strong></div>
+                    <div><span>Diagnostic Verdict:</span> <strong style={{ color: gs.is_safe ? '#10b981' : '#ef4444' }}>{gs.status_description}</strong></div>
+                    <div><span>Redirects to Harmful:</span> <strong>{gs.redirects_to_harmful ? "YES (DETECTED)" : "NO"}</strong></div>
+                    <div><span>Installs Unwanted Software:</span> <strong>{gs.installs_unwanted_software ? "YES (DETECTED)" : "NO"}</strong></div>
+                    <div><span>Phishing / Social Engineering:</span> <strong>{gs.is_phishing ? "YES (DETECTED)" : "NO"}</strong></div>
+                    <div><span>Contains Malware:</span> <strong>{gs.contains_malware ? "YES (DETECTED)" : "NO"}</strong></div>
+                    <div><span>Uncommon Downloads:</span> <strong>{gs.uncommon_downloads ? "YES (DETECTED)" : "NO"}</strong></div>
+                  </div>
               </div>
 
               <div className="stat-card cyber-panel" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -1258,6 +1591,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
           </div>
         );
       }
+
       let mlRender = null;
       if (data.ml_analysis) {
         const ml = data.ml_analysis;
@@ -1405,6 +1739,17 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       let whoisRender = null;
       if (data.whois_info) {
         const wi = data.whois_info;
+        const ageDays = wi.domain_age_days;
+        const ageColor = ageDays === null || ageDays === undefined
+          ? '#64748b'
+          : ageDays < 180 ? '#ef4444'
+          : ageDays < 365 ? '#f59e0b'
+          : '#10b981';
+        const ageLabel = ageDays === null || ageDays === undefined
+          ? 'N/A'
+          : ageDays < 180 ? `${ageDays} days ⚠ VERY YOUNG`
+          : ageDays < 365 ? `${ageDays} days (< 1 year)`
+          : `${ageDays} days (${Math.floor(ageDays / 365)} yr${Math.floor(ageDays / 365) > 1 ? 's' : ''})`;
         whoisRender = (
           <div className="report-intel">
             <div className="mobsf-stats-grid animate-fade-in" style={{ gap: '1.5rem' }}>
@@ -1416,6 +1761,7 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                   <div><span>Registrar:</span> <strong className="glowing-text">{wi.registrar || 'N/A'}</strong></div>
                   <div><span>Creation Date:</span> <strong>{Array.isArray(wi.creation_date) ? wi.creation_date[0] : wi.creation_date || 'N/A'}</strong></div>
                   <div><span>Expiration Date:</span> <strong>{Array.isArray(wi.expiration_date) ? wi.expiration_date[0] : wi.expiration_date || 'N/A'}</strong></div>
+                  <div><span>Domain Age:</span> <strong style={{ color: ageColor }}>{ageLabel}</strong></div>
                   <div><span>DNSSEC:</span> <strong>{wi.dnssec || 'N/A'}</strong></div>
                 </div>
               </div>
@@ -1555,6 +1901,213 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
                 <span>No YARA rules matched the scanned binary.</span>
               </div>
             )}
+          </div>
+        </div>
+      );
+    }
+
+    case 'ip_resolver': {
+      const geo = data.geo || {};
+      const threat = data.threat_intelligence || {};
+      const whoisRdap = data.whois_rdap || {};
+      const sslInfo = data.ssl_info || {};
+      const openPorts = data.open_ports || [];
+
+      const riskColor = threat.risk_level === 'CRITICAL' || threat.risk_level === 'HIGH'
+        ? '#ef4444'
+        : threat.risk_level === 'MEDIUM'
+          ? '#f59e0b'
+          : '#10b981';
+
+      return (
+        <div className="report-ip-resolver" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Top Banner: IP, Quick Status & Risk Gauge */}
+          <div className="stat-card cyber-panel" style={{ borderLeft: `4px solid ${riskColor}` }}>
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>RESOLVED ADDRESS INTEL</div>
+                <h2 className="glowing-text" style={{ margin: '0.2rem 0', fontFamily: 'monospace', color: '#00f0ff', fontSize: '1.7rem' }}>
+                  {data.ip}
+                </h2>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ background: data.version === 'IPv6' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(0, 240, 255, 0.2)', color: data.version === 'IPv6' ? '#a5b4fc' : '#00f0ff', border: `1px solid ${data.version === 'IPv6' ? '#8b5cf6' : '#00f0ff'}`, padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                    {data.version}
+                  </span>
+                  <span style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)', border: '1px solid var(--panel-border)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                    TYPE: {data.ip_type}
+                  </span>
+                  {data.rtt_ms > 0 && (
+                    <span style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid #10b981', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                      RTT: {data.rtt_ms} ms
+                    </span>
+                  )}
+                  {data.ptr_mismatch && (
+                    <span style={{ background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid #ef4444', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                      ⚠ PTR MISMATCH
+                    </span>
+                  )}
+                  {geo.is_tor && <span style={{ background: 'rgba(239, 68, 68, 0.25)', color: '#ef4444', border: '1px solid #ef4444', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>TOR EXIT NODE</span>}
+                  {geo.is_proxy && <span style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', border: '1px solid #f59e0b', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>VPN / PROXY</span>}
+                  {geo.is_hosting && <span style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', border: '1px solid #3b82f6', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>DATACENTER</span>}
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>FORENSIC RISK SCORE</div>
+                <div style={{ fontSize: '2rem', fontWeight: 800, color: riskColor, fontFamily: 'monospace', lineHeight: 1.1 }}>
+                  {threat.risk_score || 0} <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>/ 100</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: riskColor, textTransform: 'uppercase', marginTop: '2px' }}>
+                  {threat.risk_level || 'LOW'} RISK ({threat.confidence || 'Medium'} Confidence)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Grid section for Geo & Network */}
+          <div className="mobsf-stats-grid" style={{ gap: '1.5rem' }}>
+            {/* Geolocation */}
+            <div className="stat-card cyber-panel" style={{ flex: 1 }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>GEOLOCATION INTEL</h4>
+              <div className="profile-grid" style={{ marginTop: '0.75rem' }}>
+                <div><span>Country:</span> <strong>{geo.country ? `${geo.country} (${geo.country_code})` : 'N/A'}</strong></div>
+                <div><span>Region / State:</span> <strong>{geo.region || 'N/A'}</strong></div>
+                <div><span>City:</span> <strong>{geo.city || 'N/A'}</strong></div>
+                <div><span>Timezone:</span> <strong>{geo.timezone || 'N/A'}</strong></div>
+                <div><span>Coordinates:</span> <strong>{geo.latitude && geo.longitude ? `${geo.latitude}, ${geo.longitude}` : 'N/A'}</strong></div>
+                {geo.google_maps_url && (
+                  <div>
+                    <span>Map View:</span>
+                    <a href={geo.google_maps_url} target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                      Open Google Maps ↗
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Network & ASN */}
+            <div className="stat-card cyber-panel" style={{ flex: 1 }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>NETWORK & ASN BREAKDOWN</h4>
+              <div className="profile-grid" style={{ marginTop: '0.75rem' }}>
+                <div><span>ISP:</span> <strong className="glowing-text">{geo.isp || 'N/A'}</strong></div>
+                <div><span>Organization:</span> <strong>{geo.org || 'N/A'}</strong></div>
+                <div><span>ASN Number:</span> <strong style={{ color: 'var(--primary)' }}>{geo.asn_number || 'N/A'}</strong></div>
+                <div><span>ASN Name/Org:</span> <strong>{geo.asn_org || 'N/A'}</strong></div>
+                <div><span>Domain:</span> <strong>{geo.domain || 'N/A'}</strong></div>
+                <div><span>Bogon Address:</span> <strong>{geo.bogon ? 'YES (BOGON)' : 'NO'}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          {/* WHOIS / RDAP & RIR Information */}
+          <div className="stat-card cyber-panel">
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4>WHOIS / RDAP & REGISTRY INTEL (RIR)</h4>
+            <div className="profile-grid" style={{ marginTop: '0.75rem', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+              <div><span>Regional Registry (RIR):</span> <strong style={{ color: '#a5b4fc', textTransform: 'uppercase' }}>{whoisRdap.rir || 'N/A'}</strong></div>
+              <div><span>Network Name:</span> <strong>{whoisRdap.network_name || 'N/A'}</strong></div>
+              <div><span>CIDR Prefix:</span> <strong style={{ fontFamily: 'monospace', color: 'var(--primary)' }}>{whoisRdap.cidr || 'N/A'}</strong></div>
+              <div><span>Handle:</span> <strong>{whoisRdap.handle || 'N/A'}</strong></div>
+              {whoisRdap.abuse_emails && whoisRdap.abuse_emails.length > 0 && (
+                <div style={{ gridColumn: 'span 2' }}>
+                  <span>Abuse Contact Emails:</span>
+                  <strong style={{ color: '#ef4444', fontFamily: 'monospace', marginLeft: '0.5rem' }}>
+                    {whoisRdap.abuse_emails.join(', ')}
+                  </strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* DNS Resolution & PTR Verification */}
+          <div className="stat-card cyber-panel">
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4>DNS RESOLUTION & ANTI-SPOOFING PTR CHECK</h4>
+            <div className="profile-grid" style={{ marginTop: '0.75rem', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+              <div>
+                <span>Reverse DNS (PTR):</span>{' '}
+                <strong style={{ fontFamily: 'monospace', color: data.ptr_mismatch ? '#ef4444' : '#00f0ff' }}>
+                  {data.reverse_dns || 'No PTR Record'}
+                </strong>
+              </div>
+              <div>
+                <span>PTR Alignment Verification:</span>{' '}
+                <strong style={{ color: data.ptr_mismatch ? '#ef4444' : '#10b981' }}>
+                  {data.ptr_mismatch ? 'MISMATCH DETECTED (POTENTIAL SPOOFING)' : 'MATCHED / VALID'}
+                </strong>
+              </div>
+              <div><span>Compressed Notation:</span> <strong style={{ fontFamily: 'monospace' }}>{data.compressed || 'N/A'}</strong></div>
+              {data.expanded && <div style={{ gridColumn: 'span 2' }}><span>Expanded IPv6 Notation:</span> <strong style={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}>{data.expanded}</strong></div>}
+            </div>
+          </div>
+
+          {/* Open Ports & Latency Grid */}
+          <div className="stat-card cyber-panel">
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4>ACTIVE SERVICE PORTS & RTT LATENCY</h4>
+            {openPorts.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.75rem', marginTop: '0.75rem' }}>
+                {openPorts.map((p, idx) => (
+                  <div key={idx} style={{ background: 'rgba(0, 240, 255, 0.05)', border: '1px solid rgba(0, 240, 255, 0.2)', padding: '0.6rem 0.8rem', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)', fontFamily: 'monospace' }}>
+                        PORT {p.port}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{p.service}</div>
+                    </div>
+                    <span className="badge success" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>
+                      {p.latency_ms} ms
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ marginTop: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No standard forensic ports (21, 22, 25, 53, 80, 443, 3389, 8080) responding to TCP probe.
+              </div>
+            )}
+          </div>
+
+          {/* SSL / TLS Certificate Details (if HTTPS port 443 active) */}
+          {sslInfo && sslInfo.ssl_enabled && (
+            <div className="stat-card cyber-panel" style={{ borderLeft: '4px solid #3b82f6' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4 style={{ color: '#60a5fa' }}>SSL / TLS CERTIFICATE INSPECTION</h4>
+              <div className="profile-grid" style={{ marginTop: '0.75rem', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                <div><span>TLS Version:</span> <strong style={{ color: '#60a5fa' }}>{sslInfo.tls_version || 'N/A'}</strong></div>
+                <div><span>Cipher Suite:</span> <strong style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{sslInfo.cipher_suite || 'N/A'}</strong></div>
+                <div><span>SHA256 Fingerprint:</span> <strong style={{ fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>{sslInfo.sha256_fingerprint || 'N/A'}</strong></div>
+                <div><span>Issuer Org:</span> <strong>{sslInfo.issuer_org || sslInfo.issuer_cn || 'N/A'}</strong></div>
+                <div><span>Subject CN:</span> <strong>{sslInfo.subject_cn || 'N/A'}</strong></div>
+                <div><span>Valid Period:</span> <strong style={{ fontSize: '0.75rem' }}>{sslInfo.valid_from} → {sslInfo.valid_to}</strong></div>
+              </div>
+            </div>
+          )}
+
+          {/* Weighted Threat Intelligence Assessment */}
+          <div className="stat-card cyber-panel" style={{ borderLeft: `4px solid ${riskColor}` }}>
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4 style={{ color: riskColor }}>WEIGHTED SECURITY RISK REASONS ({threat.reasons ? threat.reasons.length : 0})</h4>
+            <ul style={{ marginTop: '0.5rem', paddingLeft: '1.2rem', color: 'var(--text-main)' }}>
+              {threat.reasons && threat.reasons.map((reason, idx) => (
+                <li key={idx} style={{ margin: '0.35rem 0', fontSize: '0.85rem' }}>
+                  <span style={{ color: riskColor, fontWeight: 'bold', marginRight: '0.4rem' }}>&gt;</span>
+                  {reason}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       );

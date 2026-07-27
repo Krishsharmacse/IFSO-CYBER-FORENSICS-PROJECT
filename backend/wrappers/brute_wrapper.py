@@ -62,7 +62,6 @@ except ImportError:
     HAS_PIKEPDF = False
 
 
-# ── Wordlists ──────────────────────────────────────────────────────────────────
 def _load_wordlist(custom_path: str = None) -> list:
     """Load + merge John's built-in list with our smart wordlist."""
     sources = []
@@ -113,7 +112,6 @@ def _detect_hash_type(h: str) -> str:
     return length_map.get(len(h.strip()), 'unknown')
 
 
-# ── 1. HTTP Web Login ──────────────────────────────────────────────────────────
 def brute_http(
     url: str, username: str,
     username_field: str = "username", password_field: str = "password",
@@ -179,7 +177,6 @@ def brute_http(
     }
 
 
-# ── 2. SSH ─────────────────────────────────────────────────────────────────────
 def brute_ssh(host: str, username: str, port: int = 22,
               wordlist_path: str = None, max_attempts: int = 200) -> dict:
     if not HAS_PARAMIKO:
@@ -221,7 +218,6 @@ def brute_ssh(host: str, username: str, port: int = 22,
     }
 
 
-# ── 3. FTP ─────────────────────────────────────────────────────────────────────
 def brute_ftp(host: str, username: str, port: int = 21,
               wordlist_path: str = None, max_attempts: int = 300) -> dict:
     base_words = _load_wordlist(wordlist_path)[:max_attempts]
@@ -255,7 +251,6 @@ def brute_ftp(host: str, username: str, port: int = 21,
     }
 
 
-# ── 4. ZIP ─────────────────────────────────────────────────────────────────────
 def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 100000) -> dict:
     if not os.path.exists(zip_path):
         return {"error": f"ZIP file not found: {zip_path}"}
@@ -265,7 +260,6 @@ def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 1000
     opener     = pyzipper.AESZipFile if HAS_PYZIPPER else zipfile.ZipFile
     start      = time.time()
 
-    # Try John the Ripper first (much faster C implementation)
     if john_available():
         john_result = _john_crack_file(zip_path, "zip", passwords[:5000])
         if john_result.get("cracked_password"):
@@ -291,7 +285,6 @@ def brute_zip(zip_path: str, wordlist_path: str = None, max_attempts: int = 1000
     return {"status": "Not Found", "mode": "zip", "attempts": len(passwords), "time_seconds": elapsed}
 
 
-# ── 5. PDF ─────────────────────────────────────────────────────────────────────
 def brute_pdf(pdf_path: str, wordlist_path: str = None, max_attempts: int = 100000) -> dict:
     if not HAS_PIKEPDF:
         return {"error": "pikepdf not installed. Run: pip install pikepdf"}
@@ -319,7 +312,6 @@ def brute_pdf(pdf_path: str, wordlist_path: str = None, max_attempts: int = 1000
     return {"status": "Not Found", "mode": "pdf", "attempts": len(passwords), "time_seconds": elapsed}
 
 
-# ── 6. Hash Cracking ───────────────────────────────────────────────────────────
 def crack_hash_all(
     target_hash: str,
     hash_type: str = "auto",
@@ -340,13 +332,11 @@ def crack_hash_all(
     base_words = _load_wordlist(wordlist_path)[:max_attempts]
     passwords  = list(dict.fromkeys(base_words + _smart_mutations(base_words)))[:max_attempts]
 
-    # Strategy 1: John the Ripper
     if john_available():
         john_res = _john_crack_hash(target_hash, hash_type, passwords)
         if john_res.get("cracked_password"):
             return {**john_res, "engine": "John the Ripper", "detected_hash_type": detected}
 
-    # Strategy 2: Python hashlib fallback
     algo_map = {
         "md5"   : hashlib.md5,
         "sha1"  : hashlib.sha1,
@@ -386,12 +376,10 @@ def crack_hash_all(
     }
 
 
-# ── John the Ripper helpers ────────────────────────────────────────────────────
 def _john_crack_hash(target_hash: str, hash_type: str, passwords: list) -> dict:
     """Write hash + wordlist to temp files, call john, parse result."""
     hash_line = f"forensic_target:{target_hash}"
 
-    # Use safe_temp_file to avoid Windows file-locking issues with delete=True
     hash_file = safe_temp_file(suffix=".txt")
     word_file = safe_temp_file(suffix=".txt")
 
@@ -463,7 +451,6 @@ def _john_crack_file(file_path: str, file_type: str, passwords: list) -> dict:
             pass
 
 
-# ── Main Dispatcher ────────────────────────────────────────────────────────────
 def run_brute_force(
     mode: str,
     target: str,

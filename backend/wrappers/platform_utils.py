@@ -12,12 +12,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-# ── OS Detection ──────────────────────────────────────────────────────────────
 IS_WINDOWS = platform.system() == "Windows"
 IS_LINUX   = platform.system() == "Linux"
 IS_MAC     = platform.system() == "Darwin"
 
-# Root of the repository (two levels above this file: backend/wrappers/platform_utils.py)
 _WRAPPER_DIR  = Path(__file__).parent.resolve()
 _BACKEND_DIR  = _WRAPPER_DIR.parent
 _PROJECT_ROOT = _BACKEND_DIR.parent
@@ -25,7 +23,6 @@ _PLUGINS_DIR  = _PROJECT_ROOT / "plugins"
 _VENV_DIR     = _PROJECT_ROOT / ".venv"
 
 
-# ── Temp directory helper ─────────────────────────────────────────────────────
 def get_temp_dir(prefix: str = "cyberx_") -> Path:
     """Return a freshly created temporary directory that works on all OS."""
     return Path(tempfile.mkdtemp(prefix=prefix))
@@ -38,11 +35,9 @@ def safe_temp_file(suffix: str = ".txt", mode: str = "w") -> str:
     return path
 
 
-# ── Wordlist path ─────────────────────────────────────────────────────────────
 WORDLIST_PATH = _BACKEND_DIR / "wordlists" / "top10000.txt"
 
 
-# ── Generic binary resolver ───────────────────────────────────────────────────
 def find_binary(name: str, windows_names: list = None, extra_paths: list = None) -> str | None:
     """
     Find a system binary across platforms.
@@ -62,9 +57,7 @@ def find_binary(name: str, windows_names: list = None, extra_paths: list = None)
         if found:
             return found
 
-    # Search extra paths
     search_dirs = extra_paths or []
-    # Always add the venv Scripts / bin dir
     venv_bin = _VENV_DIR / ("Scripts" if IS_WINDOWS else "bin")
     search_dirs.append(str(venv_bin))
 
@@ -77,18 +70,15 @@ def find_binary(name: str, windows_names: list = None, extra_paths: list = None)
     return None
 
 
-# ── John the Ripper ───────────────────────────────────────────────────────────
 def get_john_binary() -> str | None:
     if IS_WINDOWS:
-        # Search versioned subdirs: plugins/john/john-X.Y.Z-win64/run/
         john_paths = []
         john_root = _PLUGINS_DIR / "john"
         for sub in john_root.glob("john-*"):
             john_paths.append(str(sub / "run"))
-        john_paths.append(str(john_root / "run"))  # flat fallback
+        john_paths.append(str(john_root / "run"))
         john_paths += [r"C:\Program Files\John the Ripper", r"C:\John\run"]
         return find_binary("john", ["john.exe", "john"], extra_paths=john_paths)
-    # Linux: common locations
     for path in ["/usr/sbin/john", "/usr/bin/john", "/usr/local/bin/john"]:
         if os.path.exists(path):
             return path
@@ -97,16 +87,14 @@ def get_john_binary() -> str | None:
 
 JOHN_BIN = get_john_binary()
 
-# John built-in wordlist
 def get_john_wordlist() -> str | None:
-    # Search versioned subdirs first
     john_root = _PLUGINS_DIR / "john"
     for sub in john_root.glob("john-*"):
         candidate = sub / "run" / "password.lst"
         if candidate.exists():
             return str(candidate)
     candidates = [
-        str(john_root / "run" / "password.lst"),  # flat fallback
+        str(john_root / "run" / "password.lst"),
         "/usr/share/john/password.lst",
         "/usr/local/share/john/password.lst",
         r"C:\Program Files\John the Ripper\run\password.lst",
@@ -130,7 +118,6 @@ def john_available() -> bool:
         return False
 
 
-# ── ExifTool ──────────────────────────────────────────────────────────────────
 def get_exiftool_binary() -> str:
     """Return exiftool command name; on Windows tries exiftool.exe and the
     bundled Perl script via plugins/exiftool."""
@@ -143,7 +130,6 @@ def get_exiftool_binary() -> str:
 EXIFTOOL_BIN = get_exiftool_binary()
 
 
-# ── Steghide ──────────────────────────────────────────────────────────────────
 def get_steghide_binary() -> str:
     if IS_WINDOWS:
         found = find_binary("steghide", ["steghide.exe"],
@@ -154,7 +140,6 @@ def get_steghide_binary() -> str:
 STEGHIDE_BIN = get_steghide_binary()
 
 
-# ── tshark / Wireshark ────────────────────────────────────────────────────────
 def get_tshark_binary() -> str:
     if IS_WINDOWS:
         found = find_binary("tshark", ["tshark.exe"],
@@ -165,14 +150,12 @@ def get_tshark_binary() -> str:
 TSHARK_BIN = get_tshark_binary()
 
 
-# ── Volatility 3 ─────────────────────────────────────────────────────────────
 def get_volatility_binary() -> str:
     """vol / vol.py / vol3; on Windows may also be vol.exe."""
     if IS_WINDOWS:
         found = find_binary("vol", ["vol.exe", "vol3.exe", "volatility.exe"])
         if found:
             return found
-        # Try running as python module
         return "vol"
     for name in ["vol", "vol3", "volatility3"]:
         found = find_binary(name)
@@ -183,26 +166,21 @@ def get_volatility_binary() -> str:
 VOLATILITY_BIN = get_volatility_binary()
 
 
-# ── Sleuth Kit (mmls, fls, fsstat, mactime) ───────────────────────────────────
 def get_sleuthkit_tool(tool: str) -> str:
     """Return the path to a Sleuth Kit tool, e.g. mmls, fls, fsstat, mactime."""
     if IS_WINDOWS:
-        # Search both flat and versioned subdirectory layouts
         sk_paths = []
         sk_root = _PLUGINS_DIR / "sleuthkit"
-        # Versioned: plugins/sleuthkit/sleuthkit-X.Y.Z-win32/bin
         for sub in sk_root.glob("sleuthkit-*"):
             sk_paths.append(str(sub / "bin"))
-        sk_paths.append(str(sk_root / "bin"))  # flat fallback
+        sk_paths.append(str(sk_root / "bin"))
         found = find_binary(tool, [f"{tool}.exe"], extra_paths=sk_paths)
         return found or tool
     return find_binary(tool) or tool
 
 
-# ── Ghidra headless ──────────────────────────────────────────────────────────
 def get_ghidra_headless() -> str:
     """Return path to analyzeHeadless (Linux) or analyzeHeadless.bat (Windows)."""
-    # Search bundled plugin dir first
     ghidra_dirs = list(_PLUGINS_DIR.glob("ghidra_*")) + list(_PLUGINS_DIR.glob("ghidra"))
     for d in ghidra_dirs:
         if IS_WINDOWS:
@@ -212,7 +190,6 @@ def get_ghidra_headless() -> str:
         if script.exists():
             return str(script)
 
-    # Fall back to PATH
     if IS_WINDOWS:
         return find_binary("analyzeHeadless", ["analyzeHeadless.bat"]) or "analyzeHeadless.bat"
     return find_binary("analyzeHeadless") or "analyzeHeadless"
@@ -220,7 +197,6 @@ def get_ghidra_headless() -> str:
 GHIDRA_HEADLESS = get_ghidra_headless()
 
 
-# ── impacket secretsdump ──────────────────────────────────────────────────────
 def get_secretsdump_binary() -> str:
     r"""
     Return the secretsdump command.
@@ -243,14 +219,12 @@ def get_secretsdump_binary() -> str:
     for c in candidates:
         if os.path.exists(c):
             return c
-    # Fallback: let shutil.which try
     return find_binary("impacket-secretsdump",
                        ["impacket-secretsdump.exe"]) or "impacket-secretsdump"
 
 SECRETSDUMP_BIN = get_secretsdump_binary()
 
 
-# ── Body file temp path (autopsy timeline) ────────────────────────────────────
 def get_body_file_path(image_path: str) -> str:
     """Return a safe temp path for the mactime body file (cross-platform)."""
     tmp = Path(tempfile.gettempdir())
@@ -258,7 +232,6 @@ def get_body_file_path(image_path: str) -> str:
     return str(tmp / name)
 
 
-# ── Subprocess helper ─────────────────────────────────────────────────────────
 def run(cmd: list, timeout: int = 120, **kwargs) -> subprocess.CompletedProcess:
     """
     subprocess.run wrapper that adds CREATE_NO_WINDOW on Windows
@@ -280,7 +253,6 @@ def run(cmd: list, timeout: int = 120, **kwargs) -> subprocess.CompletedProcess:
     )
 
 
-# ── Diagnostics ───────────────────────────────────────────────────────────────
 def get_platform_info() -> dict:
     """Return a diagnostic summary of all resolved tool paths."""
     return {

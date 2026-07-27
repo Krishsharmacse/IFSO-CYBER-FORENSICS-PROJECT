@@ -1,7 +1,6 @@
 import os
 from wrappers.platform_utils import run, VOLATILITY_BIN
 
-# Map plugin short-name → volatility plugin name
 _PLUGIN_MAP = {
     "info"    : "windows.info.Info",
     "pslist"  : "windows.pslist.PsList",
@@ -11,7 +10,6 @@ _PLUGIN_MAP = {
     "filescan": "windows.filescan.FileScan",
 }
 
-# Linux / Mac fallback equivalents for the "info" plugin
 _FALLBACK_PLUGINS = ["linux.info.Info", "mac.info.Info"]
 
 
@@ -32,7 +30,6 @@ def run_volatility(file_path: str, scan_type: str = "info"):
     try:
         process = run(cmd, timeout=300)
 
-        # If Windows plugin fails on a Linux/Mac dump, try fallbacks
         if (process.returncode != 0
                 and scan_type == "info"
                 and "Unable to validate the plugin requirements" in process.stderr):

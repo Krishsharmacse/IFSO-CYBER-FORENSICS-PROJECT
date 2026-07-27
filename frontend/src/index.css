@@ -39,7 +39,7 @@ body {
   position: relative;
 }
 
-/* Grid & Scanline overlays */
+
 .cyber-grid {
   background-size: 35px 35px;
   background-image: 
@@ -61,12 +61,12 @@ body {
   opacity: 0.12;
 }
 
-/* Glow effects */
+
 .glowing-text {
   text-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
 }
 
-/* Sidebar Styles */
+
 .sidebar {
   width: 310px;
   min-width: 310px;
@@ -152,7 +152,7 @@ body {
   border-radius: 4px;
 }
 
-/* Category Groups */
+
 .category-group {
   margin-bottom: 0.5rem;
 }
@@ -278,7 +278,7 @@ body {
   100% { transform: scale(0.9); opacity: 1; }
 }
 
-/* Main Layout Styles */
+
 .main-content {
   flex: 1;
   padding: 2rem 2.5rem;
@@ -303,7 +303,7 @@ body {
   color: var(--text-muted);
 }
 
-/* Cyber Panel Design */
+
 .cyber-panel {
   position: relative;
   background: var(--panel-bg);
@@ -313,7 +313,7 @@ body {
   margin-bottom: 1.5rem;
 }
 
-/* Tactical corner brackets */
+
 .cyber-corner-tl, .cyber-corner-tr, .cyber-corner-bl, .cyber-corner-br {
   position: absolute;
   width: 8px;
@@ -408,7 +408,7 @@ body {
   color: #fff;
 }
 
-/* Button modifications */
+
 .btn {
   background: rgba(0, 240, 255, 0.08);
   border: 1px solid var(--primary);
@@ -468,7 +468,7 @@ body {
   box-shadow: none !important;
 }
 
-/* Laser sweep bar */
+
 .scanner-laser {
   position: absolute;
   top: 0;
@@ -488,7 +488,7 @@ body {
   100% { top: 0%; }
 }
 
-/* Terminal Console Styles */
+
 .terminal-header {
   display: flex;
   justify-content: space-between;
@@ -554,7 +554,7 @@ body {
   color: #fff;
 }
 
-/* Results Display Elements */
+
 .results-header {
   display: flex;
   justify-content: space-between;
@@ -604,7 +604,7 @@ body {
   color: #000;
 }
 
-/* Verdict Banners */
+
 .verdict-banner {
   padding: 1rem 1.25rem;
   margin-bottom: 1.5rem;
@@ -650,7 +650,7 @@ body {
   opacity: 0.85;
 }
 
-/* Exiftool / Generic Tables */
+
 .report-actions {
   display: flex;
   align-items: center;
@@ -720,7 +720,7 @@ body {
   word-break: break-all;
 }
 
-/* MobSF / Androguard Visual Panels */
+
 .mobsf-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -912,7 +912,7 @@ body {
   max-height: 500px;
 }
 
-/* Animations */
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -938,10 +938,50 @@ body {
   animation: spin 1.2s linear infinite;
 }
 
-/* Custom Grid for brute parameters */
+
 .brute-parameters-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 0.75rem;
   width: 100%;
 }
+
+
+.cyber-progress-bar {
+  width: 100%;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 5px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.9);
+}
+
+.cyber-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00f0ff 0%, #3b82f6 50%, #8b5cf6 100%);
+  border-radius: 4px;
+  transition: width 0.4s ease-in-out;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.7);
+  position: relative;
+}
+
+.cyber-progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: cyberShimmer 2s infinite;
+}
+
+@keyframes cyberShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+

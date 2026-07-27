@@ -26,26 +26,16 @@ def calculate_universal_risk(results):
     score = 0
     factors = []
     
-    # 1. Local Heuristics
     lh = results.get("local_heuristics", {})
     if lh.get("is_suspicious"):
         score += 100
         factors.append(f"Local Heuristics flagged as HIGH RISK: {lh.get('reason')}")
         
-    # 2. Google Safebrowsing
     gs = results.get("google_safebrowsing", {})
     if gs and not gs.get("is_safe", True):
         score += 35
         factors.append("Google Safebrowsing flagged site as dangerous/malicious.")
         
-    # 3. ML Model
-    ml = results.get("ml_analysis", {})
-    if ml and ml.get("prediction") != "benign":
-        ml_score = (ml.get("confidence", 0) / 100.0) * 35
-        score += ml_score
-        factors.append(f"AI Model predicts {ml.get('prediction').upper()} with {ml.get('confidence')}% confidence.")
-        
-    # 4. Pulsedive
     pd = results.get("pulsedive", {})
     if pd:
         risk = pd.get("risk", "none").lower()
@@ -56,16 +46,13 @@ def calculate_universal_risk(results):
             score += 15
             factors.append(f"Pulsedive Threat Intel reports {risk.upper()} risk.")
             
-    # 5. WHOIS Domain Age
     whois_info = results.get("whois_info", {})
     if whois_info and whois_info.get("creation_date"):
         try:
             import re
             creation_str = str(whois_info.get("creation_date"))
             
-            # Check for datetime.datetime(YYYY, MM, DD...) pattern
             dt_match = re.search(r'datetime\.datetime\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})', creation_str)
-            # Check for standard YYYY-MM-DD pattern
             str_match = re.search(r'(\d{4})-(\d{2})-(\d{2})', creation_str)
             
             creation_date = None
@@ -116,7 +103,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
     """
     results = {}
     
-    # Run local heuristics before external API checks for domain/URL targets
     if scan_type in ["whois", "safebrowsing", "urlscan", "pulsedive", "alienvault", "ml_url_analyzer", "universal_url_validator"]:
         heuristics = check_phishing_heuristics(target)
         if heuristics["is_suspicious"]:
@@ -124,7 +110,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
 
     try:
         if scan_type == "ip":
-            # Free IP-API lookup
             res = requests.get(f"http://ip-api.com/json/{target}?fields=status,message,country,city,isp,as,org,lat,lon,reverse")
             if res.status_code == 200:
                 results["ip_info"] = res.json()
@@ -132,15 +117,32 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
                 results["error"] = "Failed to fetch IP info"
 
         elif scan_type == "whois":
-            # Python-whois lookup
+            import datetime
             domain = whois.whois(target)
+            creation_raw = domain.creation_date
+            # python-whois can return a list or a single datetime
+            if isinstance(creation_raw, list):
+                creation_raw = creation_raw[0]
+            domain_age_days = None
+            try:
+                if isinstance(creation_raw, datetime.datetime):
+                    domain_age_days = (datetime.datetime.now() - creation_raw).days
+                elif isinstance(creation_raw, str):
+                    import re
+                    m = re.search(r'(\d{4})-(\d{2})-(\d{2})', creation_raw)
+                    if m:
+                        dt = datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+                        domain_age_days = (datetime.datetime.now() - dt).days
+            except Exception:
+                pass
             results["whois_info"] = {
                 "registrar": domain.registrar,
                 "creation_date": str(domain.creation_date),
                 "expiration_date": str(domain.expiration_date),
                 "name_servers": domain.name_servers,
                 "dnssec": domain.dnssec,
-                "status": domain.status
+                "status": domain.status,
+                "domain_age_days": domain_age_days
             }
             
         elif scan_type == "virustotal":
@@ -148,11 +150,9 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
             if not api_key:
                 return {"error": "VirusTotal API key is required. Provide it in UI or .env"}
             
-            # Target is expected to be a file path for VirusTotal
             if not os.path.exists(target):
                 return {"error": f"File not found: {target}"}
                 
-            # Hash the file to lookup
             sha256_hash = hashlib.sha256()
             with open(target, "rb") as f:
                 for byte_block in iter(lambda: f.read(4096), b""):
@@ -220,7 +220,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
             if not api_key:
                 return {"error": "MalwareBazaar API key is required. Provide it in UI or .env"}
 
-            # Target is expected to be a file path for MalwareBazaar
             if not os.path.exists(target):
                 return {"error": f"File not found: {target}"}
                 
@@ -273,7 +272,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
             results.update(ml_phishing_wrapper.analyze_url_ml(target))
             
         elif scan_type == "safebrowsing":
-            # If target looks like a Google Transparency Report search link, extract the target URL
             if "transparencyreport.google.com/safe-browsing/search" in target:
                 from urllib.parse import urlparse, parse_qs
                 parsed = urlparse(target)
@@ -281,7 +279,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
                 if "url" in queries and len(queries["url"]) > 0:
                     target = queries["url"][0]
 
-            # Google Transparency Report Safe Browsing lookup (no key required)
             url = f"https://transparencyreport.google.com/transparencyreport/api/v3/safebrowsing/status?site={target}"
             res = requests.get(url)
             if res.status_code == 200:
@@ -370,7 +367,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
 
 
         elif scan_type == "universal_url_validator":
-            results.update(analyze_threat(target, "ml_url_analyzer", api_key))
             results.update(analyze_threat(target, "safebrowsing", api_key))
             results.update(analyze_threat(target, "urlscan", api_key))
             results.update(analyze_threat(target, "pulsedive", api_key))
@@ -386,7 +382,6 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
                 
             results["aggregated_risk_assessment"] = calculate_universal_risk(results)
             
-            # Fix nested status from recursive calls
             results.pop("status", None)
             results.pop("error", None)
 
@@ -400,6 +395,5 @@ def analyze_threat(target: str, scan_type: str, api_key: str = None):
         
     return results
 
-# Alias for main.py integration
 run_intel_scan = analyze_threat
 

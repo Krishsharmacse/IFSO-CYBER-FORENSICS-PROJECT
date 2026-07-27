@@ -23,9 +23,6 @@ from enum import Enum
 
 from wrappers.platform_utils import run, get_sleuthkit_tool, get_body_file_path, IS_WINDOWS
 
-# ============================================================================
-# Structured SIEM & Chain of Custody Logging
-# ============================================================================
 
 class SIEMJSONFormatter(logging.Formatter):
     """Formats logs into structured JSON objects optimized for ELK/Splunk ingestion."""
@@ -42,16 +39,12 @@ class SIEMJSONFormatter(logging.Formatter):
             log_entry["artifact_hash"] = record.artifact_hash
         return json.dumps(log_entry)
 
-# Logger initialization
 logger = logging.getLogger("DFIR_Enterprise")
 log_handler = logging.StreamHandler()
 log_handler.setFormatter(SIEMJSONFormatter())
 logger.addHandler(log_handler)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
-# Enums and Data Models
-# ============================================================================
 
 class FileCategory(str, Enum):
     DOCUMENT = "Document"; IMAGE = "Image"; EXECUTABLE = "Executable"
@@ -65,9 +58,6 @@ class FileEntry:
     category: FileCategory = FileCategory.OTHER
     extension: str = ""
 
-# ============================================================================
-# Core Resilient Analyzer Engine
-# ============================================================================
 
 class SleuthKitAnalyzer:
     """
@@ -88,7 +78,6 @@ class SleuthKitAnalyzer:
         os.makedirs(self.output_dir, exist_ok=True)
         self._generate_audit_trail("ANALYZER_INITIALIZED", self.image_path)
 
-    # --- Context Manager Protocol ---
     def __enter__(self):
         logger.info("Entering secure forensic analysis execution context.")
         return self
@@ -104,15 +93,13 @@ class SleuthKitAnalyzer:
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
             
-        return False  # Propagate exceptions normally
+        return False
 
-    # --- Audit & Integrity Controls ---
     def _generate_audit_trail(self, event_type: str, target: str):
         """Calculates running validation logs to protect the Chain of Custody."""
         try:
             target_hash = ""
             if os.path.isfile(target) and event_type == "ANALYZER_INITIALIZED":
-                # Only hash on initialization for performance stability
                 hash_func = hashlib.sha256()
                 with open(target, 'rb') as f:
                     for chunk in iter(lambda: f.read(65536), b''):
@@ -126,7 +113,6 @@ class SleuthKitAnalyzer:
         except Exception as e:
             logger.error(f"Failed to generate secure audit log: {e}")
 
-    # --- Resiliency & Checkpoint Recovery ---
     def _load_checkpoint(self) -> Dict[str, Any]:
         if os.path.exists(self.checkpoint_file):
             try:
@@ -149,7 +135,6 @@ class SleuthKitAnalyzer:
         except Exception as e:
             logger.error(f"Failed to commit operational state checkpoint: {e}")
 
-    # --- Memory-Optimized Streaming Methods ---
     def stream_file_manifest(self, max_files: int = 500000) -> Generator[FileEntry, None, None]:
         """Streams system image output via Python Generators to guarantee a low memory profile."""
         if "FILE_MANIFEST_STREAM" in self.state["completed_stages"]:
@@ -165,7 +150,6 @@ class SleuthKitAnalyzer:
             cmd.extend(['-o', str(self.offset)])
         cmd.append(self.image_path)
 
-        # Utilize sub-process stdout pipe streaming directly
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
         
         try:
@@ -204,7 +188,6 @@ class SleuthKitAnalyzer:
             process.kill()
             raise RuntimeError(f"Pipeline crashed during streaming conversion execution: {e}")
 
-    # --- Asynchronous Worker Pipelines ---
     def concurrent_artifact_extraction(self, files_to_extract: List[FileEntry], thread_timeout: float = 30.0) -> List[Dict[str, Any]]:
         """Executes thread pool data extractions backed by deterministic execution timeouts."""
         icat_path = shutil.which("icat") or get_sleuthkit_tool("icat")
@@ -224,7 +207,6 @@ class SleuthKitAnalyzer:
             cmd.extend([self.image_path, file_entry.inode])
 
             try:
-                # Enforce dynamic timeouts directly via subprocess control structures
                 res = subprocess.run(cmd, capture_output=True, timeout=thread_timeout)
                 if res.returncode == 0:
                     with open(out_file, 'wb') as f:
@@ -234,7 +216,6 @@ class SleuthKitAnalyzer:
                 logger.warning(f"Extraction execution timed out processing Inode: {file_entry.inode}")
             return {"success": False, "inode": file_entry.inode}
 
-        # Cap worker constraints by logic board capacity
         workers = min(32, (os.cpu_count() or 1) + 4)
         logger.info(f"Launching multi-threaded hardware asset deployment framework utilizing {workers} workers.")
         
@@ -252,9 +233,6 @@ class SleuthKitAnalyzer:
                     
         return extracted_results
 
-# ============================================================================
-# Operational Workflow Execution Blueprint
-# ============================================================================
 
 def run_enterprise_pipeline(image: str, output: str, offset: Optional[int] = None) -> Dict[str, Any]:
     """Execution wrapper leveraging the Context Manager lifecycle interface."""
@@ -262,17 +240,14 @@ def run_enterprise_pipeline(image: str, output: str, offset: Optional[int] = Non
     
     with SleuthKitAnalyzer(image_path=image, output_dir=output, offset=offset) as analyzer:
         
-        # Phase 1: Stream Engine Manifest Parsing
         logger.info("Initializing Generator-driven disk analysis processing stream.")
         suspicious_targets = []
         
         for file_entry in analyzer.stream_file_manifest():
-            # Apply runtime filtration heuristics directly on the generator stream
             if file_entry.size > 50 * 1024 * 1024 and file_entry.extension in ['.exe', '.sh', '.bat']:
                 file_entry.category = FileCategory.SUSPICIOUS
                 suspicious_targets.append(file_entry)
                 
-        # Phase 2: Asynchronous Multi-threaded extraction loop backed by dynamic runtime constraints
         if suspicious_targets:
             logger.info(f"Target filtration hit detected. Found {len(suspicious_targets)} matching anomalies. Initializing parallel extraction.")
             extraction_results = analyzer.concurrent_artifact_extraction(suspicious_targets, thread_timeout=15.0)
@@ -288,9 +263,6 @@ def run_enterprise_pipeline(image: str, output: str, offset: Optional[int] = Non
     return results
 
 
-# ============================================================================
-# Legacy / Existing API Wrapper
-# ============================================================================
 
 def run_sleuthkit(image_path: str, scan_type: str = "mmls"):
     """
@@ -347,7 +319,6 @@ def run_sleuthkit(image_path: str, scan_type: str = "mmls"):
             mactime = get_sleuthkit_tool("mactime")
             body_proc = run([fls, '-r', '-m', '/', image_path])
             if body_proc.returncode == 0:
-                # Use a temp path safe for both OS
                 body_file_path = get_body_file_path(image_path)
                 with open(body_file_path, "w", encoding="utf-8") as f:
                     f.write(body_proc.stdout)
@@ -383,5 +354,4 @@ def run_sleuthkit(image_path: str, scan_type: str = "mmls"):
 
     return results
 
-# Alias used by main.py
 analyze_image = run_sleuthkit

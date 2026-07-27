@@ -21,11 +21,9 @@ def dump_all_functions():
         functions = fm.getFunctions(True)
         
         for func in functions:
-            # Skip external/thunk functions (imported DLL functions have no local code)
             if func.isExternal() or func.isThunk():
                 continue
             
-            # Decompile the function with a 60-second timeout per function
             res = decompInterface.decompileFunction(func, 60, monitor)
             
             if res and res.getDecompiledFunction():

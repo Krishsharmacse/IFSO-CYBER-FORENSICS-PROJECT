@@ -1,11 +1,19 @@
+import os
+import sys
+from pathlib import Path
+
+_BACKEND_DIR = str(Path(__file__).parent.resolve())
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import os
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import database, models, json
+
 from dotenv import load_dotenv
 from wrappers.platform_utils import get_platform_info
 from wrappers import (
@@ -13,7 +21,7 @@ from wrappers import (
     androguard_wrapper, mobsf_wrapper, volatility_wrapper,
     threat_intel_wrapper, network_wrapper, email_wrapper,
     evtx_wrapper, stego_wrapper, hash_wrapper,
-    brute_wrapper, registry_wrapper
+    brute_wrapper, registry_wrapper, ip_resolver_wrapper
 )
 
 load_dotenv()
@@ -27,7 +35,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_credentials=True,
+    allow_origins=["*"], allow_credentials=False,
     allow_methods=["*"], allow_headers=["*"],
 )
 
@@ -41,7 +49,6 @@ def get_db():
     finally:
         db.close()
 
-# ── Pydantic Request Models ────────────────────────────────────────────────
 class ExiftoolRequest(BaseModel):
     file_path: str
 
@@ -56,6 +63,7 @@ class AutopsyRequest(BaseModel):
 class GhidraRequest(BaseModel):
     file_path: str
     extract_code: bool = True
+    timeout: int = 900
 
 class MobileRequest(BaseModel):
     file_path: str
@@ -77,7 +85,7 @@ class GenericFileRequest(BaseModel):
     file_path: str
 
 class BruteForceRequest(BaseModel):
-    mode: str = "http"          # http | ssh | ftp | zip | pdf | hash
+    mode: str = "http"
     target: str
     username: str = "admin"
     username_field: str = "username"
@@ -94,7 +102,9 @@ class RegistryRequest(BaseModel):
     sam_path: str
     system_path: str
 
-# ── Helper: save investigation ─────────────────────────────────────────────
+class IPResolverRequest(BaseModel):
+    target: str
+
 def _save(db, filename, tool, results):
     inv = models.Investigation(filename=filename, tool_used=tool, status="Running")
     db.add(inv); db.commit(); db.refresh(inv)
@@ -103,7 +113,6 @@ def _save(db, filename, tool, results):
     db.commit()
     return inv
 
-# ── Endpoints ─────────────────────────────────────────────────────────────
 @app.get("/")
 def root():
     return {"message": "CyberX Forensics Platform API v2.0 — 15 tools active"}
@@ -131,11 +140,18 @@ def analyze_autopsy(req: AutopsyRequest, db: Session = Depends(get_db)):
     inv = _save(db, req.image_path, f"sleuthkit_{req.scan_type}", results)
     return {"id": inv.id, "status": inv.status, "results": results}
 
+@app.get("/analyze/ghidra/progress")
+def ghidra_progress(file_path: str = None):
+    return ghidra_wrapper.get_progress(file_path)
+
 @app.post("/analyze/ghidra")
 def analyze_ghidra(req: GhidraRequest, db: Session = Depends(get_db)):
-    results = ghidra_wrapper.run_headless_analysis(req.file_path, extract_code=req.extract_code)
+    results = ghidra_wrapper.run_headless_analysis(
+        req.file_path, extract_code=req.extract_code, timeout=req.timeout
+    )
     inv = _save(db, req.file_path, "ghidra", results)
     return {"id": inv.id, "status": inv.status, "results": results}
+
 
 @app.post("/analyze/androguard")
 def analyze_androguard(req: MobileRequest, db: Session = Depends(get_db)):
@@ -147,15 +163,12 @@ def analyze_androguard(req: MobileRequest, db: Session = Depends(get_db)):
 def analyze_mobsf(req: MobileRequest, db: Session = Depends(get_db)):
     results = mobsf_wrapper.run_mobsf_scan(req.file_path)
     
-    # Ensure results is always a dictionary
     if not isinstance(results, dict):
         results = {"error": str(results)}
     elif isinstance(results, str):
         results = {"error": results}
     
-    # If there's an error, make sure we save it properly
     if "error" in results:
-        # Save as failed investigation
         inv = models.Investigation(
             filename=req.file_path, 
             tool_used="mobsf", 
@@ -178,9 +191,7 @@ class MobSFDynamicRequest(BaseModel):
 def analyze_mobsf_dynamic(req: MobSFDynamicRequest, db: Session = Depends(get_db)):
     results = mobsf_wrapper.run_mobsf_dynamic_scan(req.file_path, req.wait_time)
     
-    # If the file path doesn't exist, mobsf_wrapper returns an error without making DB record
     if "error" in results and "APK file not found" in results["error"]:
-        # Save as failed investigation
         inv = models.Investigation(
             filename=req.file_path, 
             tool_used="mobsf_dynamic", 
@@ -252,6 +263,12 @@ def analyze_brute(req: BruteForceRequest, db: Session = Depends(get_db)):
 def analyze_registry(req: RegistryRequest, db: Session = Depends(get_db)):
     results = registry_wrapper.crack_registry(req.sam_path, req.system_path)
     inv = _save(db, req.sam_path, "registry_cracking", results)
+    return {"id": inv.id, "status": inv.status, "results": results}
+
+@app.post("/analyze/ip_resolver")
+def analyze_ip_resolver(req: IPResolverRequest, db: Session = Depends(get_db)):
+    results = ip_resolver_wrapper.resolve_ip(req.target)
+    inv = _save(db, req.target, "ip_resolver", results)
     return {"id": inv.id, "status": inv.status, "results": results}
 
 @app.get("/history")
@@ -355,3 +372,9 @@ def generate_report(inv_id: int, db: Session = Depends(get_db)):
     </html>
     """
     return html_content
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+

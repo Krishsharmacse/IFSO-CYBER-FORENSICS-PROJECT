@@ -9,7 +9,7 @@ cd /d "%~dp0"
 
 :: Start Backend
 echo [1/2] Starting FastAPI backend on http://localhost:8000 ...
-start "CyberX Backend" cmd /k "cd backend && ..\\.venv\\Scripts\\activate && uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+start "CyberX Backend" cmd /k "cd backend && ..\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
 
 :: Wait a moment
 timeout /t 2 >nul

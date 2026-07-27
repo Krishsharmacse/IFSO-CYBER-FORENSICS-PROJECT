@@ -4,7 +4,6 @@ import zipfile
 import subprocess
 from pathlib import Path
 
-# Paths
 BACKEND_DIR = Path(__file__).parent.resolve()
 PROJECT_ROOT = BACKEND_DIR.parent
 PLUGINS_DIR = PROJECT_ROOT / "plugins"

@@ -26,7 +26,6 @@ def parse_evtx(file_path: str, max_records: int = 50):
 
     results = []
     try:
-        # Open in binary mode — mmap requires 'rb' on all platforms
         with open(file_path, 'rb') as f:
             with contextlib.closing(
                 mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
@@ -42,5 +41,4 @@ def parse_evtx(file_path: str, max_records: int = 50):
     except Exception as e:
         return {"error": str(e)}
 
-# Alias used by main.py
 analyze_evtx = parse_evtx

@@ -38,7 +38,7 @@ def analyze_pcap(file_path: str, scan_type: str = "dns"):
 
         lines = proc.stdout.strip().split('\n')
         if scan_type == "dns":
-            lines = list(set([l for l in lines if l]))   # deduplicate
+            lines = list(set([l for l in lines if l]))
 
         return {"status": "Success", "results": lines[:1000]}
 

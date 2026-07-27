@@ -14,11 +14,9 @@ from enum import Enum
 from collections import defaultdict
 import math
 
-# Androguard imports
 from androguard.core.apk import APK
 from androguard.misc import AnalyzeAPK
 
-# Suppress spammy warnings
 logging.getLogger("androguard").setLevel(logging.ERROR)
 try:
     from loguru import logger
@@ -26,10 +24,8 @@ try:
 except ImportError:
     pass
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
-# Try importing optional dependencies
 try:
     import yara
     YARA_AVAILABLE = True
@@ -51,9 +47,6 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 
-# ============================================================================
-# Enums and Data Classes
-# ============================================================================
 
 class ThreatLevel(str, Enum):
     """Threat severity levels."""
@@ -95,7 +88,7 @@ class CodePattern:
 @dataclass
 class NetworkIndicator:
     """Network-related indicator."""
-    type: str  # URL, IP, Domain, Email
+    type: str
     value: str
     context: str
     risk_score: int
@@ -171,14 +164,10 @@ class APKAnalysisResult:
     analysis_duration: float = 0.0
 
 
-# ============================================================================
-# Threat Intelligence Database
-# ============================================================================
 
 class ThreatIntelligence:
     """Threat intelligence database for APK analysis."""
     
-    # Known malicious package names (partials)
     MALICIOUS_PACKAGE_PATTERNS = [
         r'.*\.malware\..*',
         r'.*\.spy\..*',
@@ -188,7 +177,6 @@ class ThreatIntelligence:
         r'.*\.ransom.*',
     ]
     
-    # Known fake app impersonations
     IMPERSONATION_TARGETS = {
         'whatsapp': {
             'legitimate_packages': ['com.whatsapp', 'com.whatsapp.w4b'],
@@ -262,9 +250,7 @@ class ThreatIntelligence:
         },
     }
     
-    # High-risk permissions with detailed risk assessment
     PERMISSION_RISKS = {
-        # Privacy Invasion
         'android.permission.READ_SMS': PermissionRisk(
             permission='READ_SMS',
             risk_level=ThreatLevel.HIGH,
@@ -301,7 +287,6 @@ class ThreatIntelligence:
             category='Privacy'
         ),
         
-        # Surveillance
         'android.permission.CAMERA': PermissionRisk(
             permission='CAMERA',
             risk_level=ThreatLevel.MEDIUM,
@@ -324,7 +309,6 @@ class ThreatIntelligence:
             category='Surveillance'
         ),
         
-        # System Manipulation
         'android.permission.SYSTEM_ALERT_WINDOW': PermissionRisk(
             permission='SYSTEM_ALERT_WINDOW',
             risk_level=ThreatLevel.HIGH,
@@ -354,7 +338,6 @@ class ThreatIntelligence:
             category='System'
         ),
         
-        # Financial
         'android.permission.PROCESS_OUTGOING_CALLS': PermissionRisk(
             permission='PROCESS_OUTGOING_CALLS',
             risk_level=ThreatLevel.MEDIUM,
@@ -371,7 +354,6 @@ class ThreatIntelligence:
         ),
     }
     
-    # Suspicious API calls and patterns
     SUSPICIOUS_API_PATTERNS = {
         'runtime_exec': re.compile(r'Runtime\.exec|ProcessBuilder', re.IGNORECASE),
         'reflection': re.compile(r'java\.lang\.reflect\.Method.*invoke', re.IGNORECASE),
@@ -389,7 +371,6 @@ class ThreatIntelligence:
         'screen_record': re.compile(r'MediaProjection|createVirtualDisplay', re.IGNORECASE),
     }
     
-    # Network indicators patterns
     NETWORK_PATTERNS = {
         'url': re.compile(r'https?://[^\s\'"]+', re.IGNORECASE),
         'ip': re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b'),
@@ -397,19 +378,15 @@ class ThreatIntelligence:
         'domain': re.compile(r'(?:www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:/[^\s\'"]*)?'),
     }
     
-    # Known malicious IPs and domains (expandable database)
     MALICIOUS_INDICATORS = {
         'domains': [
             'malware.com', 'stealer.net', 'ransomware.org',
-            # Add more known malicious domains
         ],
         'ip_ranges': [
             '91.234.', '185.130.', '5.45.',
-            # Add known malicious IP ranges
         ],
     }
     
-    # Tracking/Ad network identifiers
     TRACKING_NETWORKS = {
         'applovin': {'score': 10, 'type': 'Advertising'},
         'appmetrica': {'score': 20, 'type': 'Analytics'},
@@ -432,7 +409,6 @@ class ThreatIntelligence:
         'singular': {'score': 10, 'type': 'Analytics'},
     }
     
-    # YARA rules for malware detection
     YARA_RULES = """
     rule Android_Malware_DexClassLoader {
         strings:
@@ -530,7 +506,7 @@ class ThreatIntelligence:
         
         for indicator_type, regex in cls.NETWORK_PATTERNS.items():
             matches = regex.findall(text)
-            for match in matches[:20]:  # Limit to prevent flooding
+            for match in matches[:20]:
                 risk_score = 0
                 if any(domain in match for domain in cls.MALICIOUS_INDICATORS['domains']):
                     risk_score = 80
@@ -547,9 +523,6 @@ class ThreatIntelligence:
         return indicators
 
 
-# ============================================================================
-# Advanced APK Analyzer
-# ============================================================================
 
 class AdvancedAPKAnalyzer:
     """Advanced APK analysis with deep inspection capabilities."""
@@ -581,20 +554,17 @@ class AdvancedAPKAnalyzer:
         if not self.apk:
             self._load_apk()
         
-        # Calculate file hashes
         file_size = os.path.getsize(self.file_path)
         hashes = self._calculate_hashes()
         
-        # Extract certificate info
         cert_info = self._extract_certificate_info()
         
-        # Count dex files
         dex_count = 0
         try:
             with zipfile.ZipFile(self.file_path, 'r') as zf:
                 dex_count = len([f for f in zf.namelist() if f.endswith('.dex')])
         except Exception:
-            dex_count = 1  # Default assumption
+            dex_count = 1
         
         return APKMetadata(
             file_path=self.file_path,
@@ -637,7 +607,6 @@ class AdvancedAPKAnalyzer:
         Newer androguard requires get_certificate(filename) — we auto-detect the cert file.
         """
         try:
-            # Auto-detect signing certificate filename (META-INF/*.RSA / *.DSA / *.EC)
             cert_filename = None
             for f in self.apk.get_files():
                 upper = f.upper()
@@ -679,23 +648,20 @@ class AdvancedAPKAnalyzer:
         if not self.all_strings:
             strings = []
             
-            # Extract from DEX
             if self.dalvik_vm:
                 try:
                     for string in self.dalvik_vm.get_strings():
-                        if len(string) >= 4:  # Filter short strings
+                        if len(string) >= 4:
                             strings.append(string)
                 except Exception as e:
                     logger.debug(f"Failed to extract DEX strings: {e}")
             
-            # Extract from resources
             try:
                 with zipfile.ZipFile(self.file_path, 'r') as zf:
                     for filename in zf.namelist():
                         if filename.endswith('.xml') or filename.endswith('.txt'):
                             try:
                                 content = zf.read(filename).decode('utf-8', errors='ignore')
-                                # Simple string extraction from XML/text
                                 found_strings = re.findall(r'[a-zA-Z0-9._/-]{4,}', content)
                                 strings.extend(found_strings)
                             except Exception:
@@ -703,7 +669,7 @@ class AdvancedAPKAnalyzer:
             except Exception as e:
                 logger.debug(f"Failed to extract resource strings: {e}")
             
-            self.all_strings = list(set(strings))  # Deduplicate
+            self.all_strings = list(set(strings))
         
         return self.all_strings
     
@@ -711,21 +677,17 @@ class AdvancedAPKAnalyzer:
         """Detect if APK is obfuscated."""
         obfuscation_indicators = 0
         
-        # Check package structure
         activities = self.apk.get_activities()
         if activities:
-            # Check for single-character class names
             short_names = [a.split('.')[-1] for a in activities if len(a.split('.')[-1]) <= 2]
-            if len(short_names) > len(activities) * 0.3:  # More than 30% short names
+            if len(short_names) > len(activities) * 0.3:
                 obfuscation_indicators += 1
             
-            # Check for repeated patterns
             main_package = '.'.join(self.apk.get_package().split('.')[:-1])
             non_main_package = [a for a in activities if not a.startswith(main_package)]
             if len(non_main_package) > 0:
                 obfuscation_indicators += 1
         
-        # Check for ProGuard files
         try:
             with zipfile.ZipFile(self.file_path, 'r') as zf:
                 if any('proguard' in f.lower() for f in zf.namelist()):
@@ -755,7 +717,6 @@ class AdvancedAPKAnalyzer:
         issues = []
         strings = ' '.join(self.extract_all_strings() if self.all_strings else [])
         
-        # Weak algorithms
         if 'DES' in strings or 'des' in strings:
             issues.append("Uses weak encryption algorithm (DES)")
         if 'MD5' in strings and 'SHA' not in strings:
@@ -763,7 +724,6 @@ class AdvancedAPKAnalyzer:
         if 'RC4' in strings:
             issues.append("Uses weak stream cipher (RC4)")
         
-        # Hardcoded keys
         key_patterns = [
             r'(?:key|secret|password|passwd|pwd)\s*=\s*["\'][^"\']{8,}["\']',
             r'(?:AES|DES)Key\s*=\s*["\'][^"\']{8,}["\']',
@@ -786,7 +746,6 @@ class AdvancedAPKAnalyzer:
             confidence_score=0.0
         )
         
-        # 1. Check impersonation
         app_name = self.apk.get_app_name() or ''
         package_name = self.apk.get_package() or ''
         impersonation_flags = ThreatIntelligence.check_impersonation(app_name, package_name)
@@ -794,17 +753,14 @@ class AdvancedAPKAnalyzer:
             threat_analysis.flags.append(flag['description'])
             threat_analysis.threat_score += flag['score']
         
-        # 2. Assess permissions
         permissions = self.apk.get_permissions()
         permission_risks = ThreatIntelligence.assess_permissions(permissions)
         threat_analysis.permissions_risks = permission_risks
         threat_analysis.threat_score += sum(risk.score for risk in permission_risks)
         
-        # Permission-based flags
         if threat_analysis.threat_score > 80:
             threat_analysis.flags.append("CRITICAL: Excessive dangerous permissions requested")
         
-        # 3. Analyze code patterns (if deep analysis)
         if self.deep_analysis or self.all_strings:
             strings_text = ' '.join(self.extract_all_strings())
             code_patterns = ThreatIntelligence.find_code_patterns(strings_text)
@@ -814,12 +770,10 @@ class AdvancedAPKAnalyzer:
                 for pattern in code_patterns
             )
             
-            # Network indicators
             network_indicators = ThreatIntelligence.extract_network_indicators(strings_text)
             threat_analysis.network_indicators = network_indicators
             threat_analysis.threat_score += sum(ind.risk_score for ind in network_indicators)
             
-            # Obfuscation and anti-analysis
             if self.detect_obfuscation():
                 threat_analysis.obfuscation_detected = True
                 threat_analysis.threat_score += 10
@@ -830,12 +784,10 @@ class AdvancedAPKAnalyzer:
                 threat_analysis.threat_score += 15
                 threat_analysis.flags.append("Anti-analysis techniques detected")
             
-            # Encryption issues
             encryption_issues = self.check_encryption_misuse()
             threat_analysis.encryption_misuse = encryption_issues
             threat_analysis.threat_score += len(encryption_issues) * 5
         
-        # 4. Check tracking networks
         all_components = ' '.join(
             self.apk.get_services() + 
             self.apk.get_receivers() + 
@@ -847,8 +799,6 @@ class AdvancedAPKAnalyzer:
                 threat_analysis.flags.append(f"Contains {network.replace('_', ' ').title()} {info['type']} SDK")
                 threat_analysis.threat_score += info['score']
         
-        # 5. Additional heuristic checks
-        # Check for suspicious services/receivers count
         services_count = len(self.apk.get_services())
         receivers_count = len(self.apk.get_receivers())
         
@@ -860,7 +810,6 @@ class AdvancedAPKAnalyzer:
             threat_analysis.threat_score += 5
             threat_analysis.flags.append(f"Unusually high number of broadcast receivers ({receivers_count})")
         
-        # 6. Certificate analysis
         cert_info = self._extract_certificate_info()
         if cert_info:
             if cert_info.is_debug:
@@ -871,8 +820,7 @@ class AdvancedAPKAnalyzer:
                 threat_analysis.threat_score += 5
                 threat_analysis.flags.append("APK is self-signed")
         
-        # 7. Determine verdict and confidence
-        threat_analysis.threat_score = min(threat_analysis.threat_score, 200)  # Cap at 200
+        threat_analysis.threat_score = min(threat_analysis.threat_score, 200)
         
         if threat_analysis.threat_score >= 150:
             threat_analysis.verdict = ThreatLevel.MALICIOUS
@@ -893,16 +841,12 @@ class AdvancedAPKAnalyzer:
             threat_analysis.verdict = ThreatLevel.SAFE
             threat_analysis.confidence_score = 0.45
         
-        # Adjust confidence based on analysis depth
         if not self.deep_analysis:
-            threat_analysis.confidence_score *= 0.7  # Lower confidence for basic analysis
+            threat_analysis.confidence_score *= 0.7
         
         return threat_analysis
 
 
-# ============================================================================
-# Main Analysis Functions
-# ============================================================================
 
 def analyze_apk(
     file_path: str,
@@ -935,28 +879,23 @@ def analyze_apk(
     try:
         logger.info(f"Starting APK analysis: {file_path}")
         
-        # Validate file
         if not os.path.exists(file_path):
             return {"error": f"APK file not found: {file_path}"}
         
         if not file_path.endswith('.apk'):
             logger.warning(f"File may not be an APK: {file_path}")
         
-        # Initialize analyzer
         analyzer = AdvancedAPKAnalyzer(file_path, deep_analysis=deep_analysis)
         analyzer._load_apk()
         
-        # Extract metadata
         result.metadata = analyzer.extract_metadata()
         
-        # Extract components
         result.activities = analyzer.apk.get_activities()
         result.services = analyzer.apk.get_services()
         result.receivers = analyzer.apk.get_receivers()
         result.providers = analyzer.apk.get_providers()
         result.permissions = analyzer.apk.get_permissions()
         
-        # Extract libraries
         try:
             with zipfile.ZipFile(file_path, 'r') as zf:
                 lib_files = [f for f in zf.namelist() if f.startswith('lib/')]
@@ -966,16 +905,13 @@ def analyze_apk(
         except Exception:
             result.libraries = []
         
-        # Perform threat analysis
         result.threat_analysis = analyzer.comprehensive_threat_analysis()
         
-        # YARA scan if available and requested
         if yara_scan and YARA_AVAILABLE:
             yara_results = _perform_yara_scan(file_path)
             if yara_results:
                 result.threat_analysis.flags.extend(yara_results)
                 result.threat_analysis.threat_score += len(yara_results) * 20
-                # Recalculate verdict
                 if result.threat_analysis.threat_score >= 150:
                     result.threat_analysis.verdict = ThreatLevel.MALICIOUS
         
@@ -993,10 +929,8 @@ def analyze_apk(
     finally:
         result.analysis_duration = time.time() - start_time
     
-    # Convert to dictionary
     result_dict = _result_to_dict(result)
     
-    # Export if requested
     if export_json:
         export_path = output_path or f"{os.path.splitext(file_path)[0]}_analysis.json"
         _export_to_json(result_dict, export_path)
@@ -1045,7 +979,6 @@ def _result_to_dict(result: APKAnalysisResult) -> Dict[str, Any]:
         "status": result.status,
         "success": result.success,
         
-        # --- ADDED FOR FRONTEND COMPATIBILITY ---
         "analysis_verdict": result.threat_analysis.verdict.value if result.threat_analysis else "SAFE",
         "threat_score": result.threat_analysis.threat_score if result.threat_analysis else 0,
         "threat_flags": result.threat_analysis.flags if result.threat_analysis else [],
@@ -1058,7 +991,6 @@ def _result_to_dict(result: APKAnalysisResult) -> Dict[str, Any]:
         "activities": result.activities,
         "services": result.services,
         "receivers": result.receivers,
-        # ----------------------------------------
         
         "timestamp": result.timestamp,
         "analysis_duration_seconds": result.analysis_duration,
@@ -1086,13 +1018,9 @@ def _export_to_json(data: Dict[str, Any], output_path: str) -> None:
         logger.error(f"Failed to export results: {e}")
 
 
-# Quick analysis alias for backward compatibility
 analyze_apk_quick = lambda fp: analyze_apk(fp, deep_analysis=False)
 
 
-# ============================================================================
-# Command Line Interface
-# ============================================================================
 
 if __name__ == "__main__":
     import argparse
@@ -1120,7 +1048,6 @@ Examples:
     
     args = parser.parse_args()
     
-    # Perform analysis
     result = analyze_apk(
         file_path=args.file,
         deep_analysis=args.deep,
@@ -1129,7 +1056,6 @@ Examples:
         output_path=args.export
     )
     
-    # Print results
     if not args.quiet:
         print("\\n" + "="*60)
         print(f"APK Security Analysis: {os.path.basename(args.file)}")
@@ -1167,5 +1093,4 @@ Examples:
         
         print("="*60)
     else:
-        # Quiet mode - print JSON
         print(json.dumps(result, indent=2, default=str))

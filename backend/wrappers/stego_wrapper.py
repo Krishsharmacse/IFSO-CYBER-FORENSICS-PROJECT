@@ -28,5 +28,4 @@ def check_stego(file_path: str):
     except Exception as e:
         return {"error": str(e)}
 
-# Alias used by main.py
 analyze_stego = check_stego

@@ -6,16 +6,10 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Any, Optional
 from dataclasses import dataclass, field
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
 
 MOBSF_URL = "http://127.0.0.1:8001"
 MOBSF_API_KEY = "fixed-mobsf-api-key"
 
-# ============================================================================
-# DATA CLASSES
-# ============================================================================
 
 @dataclass
 class RiskFeatures:
@@ -165,118 +159,112 @@ class MobSFAnalyzer:
         self.MOBSF_API_KEY = MOBSF_API_KEY
         self.permission_detector = PermissionCombinationDetector()
         
-        # ============================================================
-        # FIXED: CORRECTED WEIGHTS WITH HIGHER PRIORITY FOR CRITICAL ISSUES
-        # ============================================================
         self.FEATURE_WEIGHTS = {
-            'high_findings': 0.30,          # 30% - High severity findings
-            'permission_combinations': 0.20, # 20% - Dangerous permissions
-            'apkid_malware': 0.15,          # 15% - APKID analysis
-            'malware_detection': 0.30,      # 30% - MALWARE DETECTION (increased!)
-            'network_security': 0.15,       # 15% - Network security
-            'exported_components': 0.10,    # 10% - Attack surface
-            'certificate': 0.15,            # 15% - CERTIFICATE ISSUES (increased!)
-            'secrets': 0.10,                # 10% - Hardcoded secrets
-            'manifest_flags': 0.10          # 10% - Manifest flags
+            'high_findings': 0.30,
+            'permission_combinations': 0.20,
+            'apkid_malware': 0.15,
+            'malware_detection': 0.30,
+            'network_security': 0.15,
+            'exported_components': 0.10,
+            'certificate': 0.15,
+            'secrets': 0.10,
+            'manifest_flags': 0.10
         }
         
-        # ============================================================
-        # FIXED: APKID THREAT WEIGHTS
-        # ============================================================
         self.APKID_WEIGHTS = {
             'packer': {
-                'SecNeo': 25,  # Increased
+                'SecNeo': 25,
                 'UPX': 20,
                 'ditor': 22,
                 '360': 20,
                 'tencent': 18,
                 'default': 15
             },
-            'anti_vm': 20,      # Increased
-            'anti_debug': 20,   # Increased
+            'anti_vm': 20,
+            'anti_debug': 20,
             'anti_hook': 15,
             'reflection': 12,
             'obfuscation': 10
         }
         
-        # ============================================================
-        # FIXED: SEVERITY WEIGHTS
-        # ============================================================
         self.SEVERITY_WEIGHTS = {
-            'high': 25,         # Increased
-            'medium': 10,       # Increased
+            'high': 25,
+            'medium': 10,
             'low': 3,
             'warning': 6
         }
         
-        # ============================================================
-        # FIXED: NETWORK SECURITY WEIGHTS
-        # ============================================================
         self.NETWORK_WEIGHTS = {
-            'cleartext_traffic': 20,        # Increased
-            'cert_pinning_bypass': 25,      # Increased
-            'trust_user_ca': 15,            # Increased
+            'cleartext_traffic': 20,
+            'cert_pinning_bypass': 25,
+            'trust_user_ca': 15,
             'no_https': 15
         }
 
     def run_mobsf_scan(self, file_path: str) -> Dict[str, Any]:
-        """Main analysis entry point with corrected risk calculation"""
+        """Main analysis entry point with unified online/offline risk calculation"""
         if not os.path.exists(file_path):
             return {"error": f"APK file not found: {file_path}"}
         
         if self.MOBSF_API_KEY == "YOUR_MOBSF_API_KEY":
             return {"error": "MobSF API key not configured"}
         
-        try:
-            # 0. Quick connectivity check before uploading (fail fast)
-            try:
-                requests.get(self.MOBSF_URL, timeout=5)
-            except requests.exceptions.ConnectionError:
-                return {"error": f"Cannot connect to MobSF at {self.MOBSF_URL}. Is MobSF running?"}
-            except requests.exceptions.Timeout:
-                return {"error": f"MobSF at {self.MOBSF_URL} is not responding (timeout). Is it running?"}
+        report_data = None
+        pdf_path = None
+        pdf_base64 = None
 
-            # 1. Upload and scan with MobSF
-            upload_data = self._upload_file(file_path)
-            if 'error' in upload_data:
-                return upload_data
+        mobsf_online = False
+        try:
+            res = requests.get(self.MOBSF_URL, timeout=3)
+            if res.status_code < 500:
+                mobsf_online = True
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            mobsf_online = False
+
+        if mobsf_online:
+            try:
+                upload_data = self._upload_file(file_path)
+                if isinstance(upload_data, dict) and 'error' in upload_data:
+                    return upload_data
+                    
+                hash_val = upload_data.get("hash")
+                scan_type = upload_data.get("scan_type")
                 
-            hash_val = upload_data.get("hash")
-            scan_type = upload_data.get("scan_type")
-            
-            scan_result = self._trigger_scan(hash_val, scan_type)
-            if 'error' in scan_result:
-                return scan_result
+                scan_result = self._trigger_scan(hash_val, scan_type)
+                if isinstance(scan_result, dict) and 'error' in scan_result:
+                    return scan_result
+                    
+                report_data = self._get_report(hash_val)
+                if isinstance(report_data, dict) and 'error' in report_data:
+                    return report_data
                 
-            report_data = self._get_report(hash_val)
-            if 'error' in report_data:
-                return report_data
-            
-            # 2. Extract features
+                pdf_path, pdf_base64 = self._download_pdf_with_base64(hash_val)
+            except Exception as e:
+                mobsf_online = False
+
+        if not mobsf_online or not report_data:
+            try:
+                from wrappers.mobsf_scan import scan_file
+                report_data = scan_file(file_path)
+                if isinstance(report_data, dict) and "error" in report_data and report_data.get("status") == "Failed":
+                    return report_data
+            except Exception as ex:
+                return {"error": f"MobSF server offline and local mobsf_scan failed: {ex}"}
+
+        try:
             features = self._extract_features(report_data)
-            
-            # 3. Calculate risk scores
             risk_scores = self._calculate_risk_scores(features)
-            
-            # 4. Compute final risk with corrected calculation
             final_risk = self._compute_final_risk(risk_scores)
-            
-            # 5. Generate risk classification
             classification = self._classify_risk(final_risk, risk_scores)
             
-            # 6. Download PDF report
-            pdf_path, pdf_base64 = self._download_pdf_with_base64(hash_val)
-            
-            # 7. Build response
+            if not pdf_path:
+                h_val = report_data.get("hash") or report_data.get("hashes", {}).get("sha256", "mobsf_report")
+                pdf_path, pdf_base64 = self._generate_local_pdf(h_val, report_data, features, risk_scores, final_risk, classification)
+
             return self._build_response(report_data, features, risk_scores, 
                                        final_risk, classification, pdf_path, pdf_base64)
-            
-        except requests.exceptions.ConnectionError:
-            return {"error": f"Cannot connect to MobSF at {self.MOBSF_URL}. Make sure MobSF is running (python manage.py runserver 0.0.0.0:8001)."}
-        except requests.exceptions.Timeout:
-            return {"error": "MobSF request timed out. The APK may be too large, or MobSF is overloaded. Try again."}
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"Failed to compute MobSF risk report: {str(e)}"}
 
     def _extract_features(self, report_data: Dict) -> RiskFeatures:
         """Extract all features from MobSF report"""
@@ -292,7 +280,6 @@ class MobSFAnalyzer:
         features = self._extract_trackers(features, report_data)
         features = self._extract_dangerous_apis(features, report_data)
         
-        # Populate legacy fields
         features.H = features.high_findings
         features.M = features.medium_findings
         features.DP = len(features.dangerous_perms)
@@ -309,36 +296,56 @@ class MobSFAnalyzer:
         return features
 
     def _extract_severity_findings(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
-        """Extract severity findings"""
+        """Extract severity findings from MobSF server or local sast_findings"""
+        # Local scan format
+        sast = report_data.get('sast_findings')
+        if isinstance(sast, dict):
+            features.high_findings += len(sast.get('high', []))
+            features.medium_findings += len(sast.get('medium', []))
+            features.low_findings += len(sast.get('low', []))
+
+        # MobSF server manifest_analysis
         manifest = report_data.get('manifest_analysis', {})
-        if isinstance(manifest, dict):
+        if isinstance(manifest, list):
+            for item in manifest:
+                if isinstance(item, dict):
+                    stat = (item.get('stat') or item.get('severity') or '').lower()
+                    if stat in ['high', 'critical']:
+                        features.high_findings += 1
+                    elif stat in ['medium', 'warning']:
+                        features.medium_findings += 1
+                    elif stat in ['low', 'info']:
+                        features.low_findings += 1
+        elif isinstance(manifest, dict):
             for key, value in manifest.items():
                 if isinstance(value, dict):
-                    severity = value.get('severity', '').lower()
-                    if severity == 'high':
+                    stat = (value.get('stat') or value.get('severity') or '').lower()
+                    if stat in ['high', 'critical']:
                         features.high_findings += 1
-                    elif severity in ['medium', 'warning']:
+                    elif stat in ['medium', 'warning']:
                         features.medium_findings += 1
-                    elif severity == 'low':
+                    elif stat in ['low', 'info']:
                         features.low_findings += 1
-        
+
+        # MobSF server code_analysis
         code_analysis = report_data.get('code_analysis', {})
         if isinstance(code_analysis, dict):
             for key, value in code_analysis.items():
-                if isinstance(value, dict) and 'metadata' in value:
-                    severity = value['metadata'].get('severity', '').lower()
-                    if severity == 'high':
-                        features.high_findings += 1
-                    elif severity in ['medium', 'warning']:
-                        features.medium_findings += 1
-                    elif severity == 'low':
-                        features.low_findings += 1
-        
+                if isinstance(value, dict):
+                    meta = value.get('metadata', value)
+                    if isinstance(meta, dict):
+                        stat = (meta.get('severity') or meta.get('stat') or '').lower()
+                        if stat in ['high', 'critical']:
+                            features.high_findings += 1
+                        elif stat in ['medium', 'warning']:
+                            features.medium_findings += 1
+                        elif stat in ['low', 'info']:
+                            features.low_findings += 1
+
         return features
 
     def _extract_permissions(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
-        """Extract and analyze permissions"""
-        manifest = report_data.get('manifest_analysis', {})
+        """Extract and analyze permissions from MobSF server or local scan"""
         dangerous_perm_patterns = [
             'READ_SMS', 'SEND_SMS', 'RECEIVE_SMS',
             'READ_CONTACTS', 'READ_CALL_LOG',
@@ -349,16 +356,35 @@ class MobSFAnalyzer:
             'WRITE_SETTINGS', 'BIND_DEVICE_ADMIN',
             'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'
         ]
-        
-        if isinstance(manifest, dict):
-            for key, value in manifest.items():
-                if 'permission' in key.lower() and isinstance(value, dict):
-                    if any(pattern in key for pattern in dangerous_perm_patterns):
-                        features.dangerous_perms.append(key)
-        
+
+        extracted_perms = set()
+
+        # From local scan or MobSF server permissions
+        perms_raw = report_data.get('permissions', [])
+        if isinstance(perms_raw, list):
+            for p in perms_raw:
+                if isinstance(p, dict):
+                    name = p.get('name', '')
+                    if p.get('is_dangerous') or any(pat in name for pat in dangerous_perm_patterns):
+                        extracted_perms.add(name)
+                elif isinstance(p, str):
+                    if any(pat in p for pat in dangerous_perm_patterns):
+                        extracted_perms.add(p)
+        elif isinstance(perms_raw, dict):
+            for perm_name, info in perms_raw.items():
+                is_dang = False
+                if isinstance(info, dict):
+                    status = str(info.get('status', '')).lower()
+                    if status == 'dangerous':
+                        is_dang = True
+                if is_dang or any(pat in perm_name for pat in dangerous_perm_patterns):
+                    extracted_perms.add(perm_name)
+
+        features.dangerous_perms = list(extracted_perms)
+
         patterns, _ = self.permission_detector.analyze(features.dangerous_perms)
         features.permission_combinations = [p['description'] for p in patterns]
-        
+
         return features
 
     def _extract_apkid(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
@@ -367,7 +393,7 @@ class MobSFAnalyzer:
         if isinstance(apkid, dict):
             for dex, details in apkid.items():
                 if isinstance(details, dict):
-                    if details.get('packer') == 'yes':
+                    if details.get('packer') in ['yes', True]:
                         features.has_packer = True
                         if 'packer_name' in details:
                             features.packer_name = details['packer_name']
@@ -377,23 +403,37 @@ class MobSFAnalyzer:
                                     features.packer_name = key
                                     break
                     
-                    if details.get('anti_vm') == 'yes':
+                    if details.get('anti_vm') in ['yes', True]:
                         features.has_anti_vm = True
-                    if details.get('anti_debug') == 'yes':
+                    if details.get('anti_debug') in ['yes', True]:
                         features.has_anti_debug = True
-                    if details.get('anti_hook') == 'yes':
+                    if details.get('anti_hook') in ['yes', True]:
                         features.has_anti_hook = True
-                    if details.get('reflection') == 'yes':
+                    if details.get('reflection') in ['yes', True]:
                         features.has_reflection = True
-                    if details.get('obfuscator') == 'yes':
+                    if details.get('obfuscator') in ['yes', True]:
                         features.has_obfuscation = True
-        
+
+        # Also inspect SAST findings for anti-analysis techniques
+        sast = report_data.get('sast_findings', {})
+        if isinstance(sast, dict):
+            all_findings = sast.get('high', []) + sast.get('medium', []) + sast.get('low', [])
+            for f in all_findings:
+                if isinstance(f, dict):
+                    title = str(f.get('title', '')).lower()
+                    rule_id = str(f.get('rule_id', '')).lower()
+                    if 'anti-vm' in title or 'anti_vm' in rule_id or 'emulator' in title:
+                        features.has_anti_vm = True
+                    if 'anti-debug' in title or 'anti_debug' in rule_id or 'debugger' in title:
+                        features.has_anti_debug = True
+                    if 'obfuscat' in title or 'obfuscat' in rule_id:
+                        features.has_obfuscation = True
+
         return features
 
     def _extract_network_security(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
         """Extract network security information"""
         manifest = report_data.get('manifest_analysis', {})
-        
         if isinstance(manifest, dict):
             for key, value in manifest.items():
                 if 'usesCleartextTraffic' in str(key) or 'Cleartext' in str(value):
@@ -403,33 +443,67 @@ class MobSFAnalyzer:
                         features.has_cert_pinning_bypass = True
                 if 'trust' in str(key).lower() and 'user' in str(value).lower():
                     features.trusts_user_ca = True
-        
+        elif isinstance(manifest, list):
+            for item in manifest:
+                if isinstance(item, dict):
+                    title = str(item.get('title', '')).lower()
+                    desc = str(item.get('description', '')).lower()
+                    if 'cleartext' in title or 'cleartext' in desc:
+                        features.has_cleartext_traffic = True
+                    if 'pinning' in title or 'pinning' in desc:
+                        features.has_cert_pinning_bypass = True
+
+        sast = report_data.get('sast_findings', {})
+        if isinstance(sast, dict):
+            all_findings = sast.get('high', []) + sast.get('medium', []) + sast.get('low', [])
+            for f in all_findings:
+                if isinstance(f, dict):
+                    title = str(f.get('title', '')).lower()
+                    if 'cleartext' in title:
+                        features.has_cleartext_traffic = True
+                    if 'trust' in title and 'user' in title:
+                        features.trusts_user_ca = True
+
         return features
 
     def _extract_components(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
-        """Extract exported components"""
-        features.exported_activities = report_data.get('exported_activity_count', 0)
-        features.exported_services = report_data.get('exported_service_count', 0)
-        features.exported_receivers = report_data.get('exported_receiver_count', 0)
-        features.exported_providers = report_data.get('exported_provider_count', 0)
-        
-        if features.exported_activities == 0:
-            manifest = report_data.get('manifest_analysis', {})
-            if isinstance(manifest, dict):
-                for key, value in manifest.items():
-                    if 'activity' in key.lower() and isinstance(value, dict):
-                        if value.get('exported') == 'true':
-                            features.exported_activities += 1
-                    elif 'service' in key.lower() and isinstance(value, dict):
-                        if value.get('exported') == 'true':
-                            features.exported_services += 1
-                    elif 'receiver' in key.lower() and isinstance(value, dict):
-                        if value.get('exported') == 'true':
-                            features.exported_receivers += 1
-                    elif 'provider' in key.lower() and isinstance(value, dict):
-                        if value.get('exported') == 'true':
-                            features.exported_providers += 1
-        
+        """Extract exported components and total component counts"""
+        exp_comp = report_data.get('exported_components', {})
+        if isinstance(exp_comp, dict):
+            features.exported_activities = exp_comp.get('activities', 0) or 0
+            features.exported_services = exp_comp.get('services', 0) or 0
+            features.exported_receivers = exp_comp.get('receivers', 0) or 0
+            features.exported_providers = exp_comp.get('providers', 0) or 0
+
+        exported_count = report_data.get('exported_count', {})
+        if isinstance(exported_count, dict):
+            features.exported_activities = max(features.exported_activities, exported_count.get('exported_activities', 0) or 0)
+            features.exported_services = max(features.exported_services, exported_count.get('exported_services', 0) or 0)
+            features.exported_receivers = max(features.exported_receivers, exported_count.get('exported_receivers', 0) or 0)
+            features.exported_providers = max(features.exported_providers, exported_count.get('exported_providers', 0) or 0)
+
+        for key, feat_attr in [
+            ('exported_activities', 'exported_activities'),
+            ('exported_services', 'exported_services'),
+            ('exported_receivers', 'exported_receivers'),
+            ('exported_providers', 'exported_providers')
+        ]:
+            val = report_data.get(key)
+            if isinstance(val, list):
+                setattr(features, feat_attr, max(getattr(features, feat_attr), len(val)))
+            elif isinstance(val, int):
+                setattr(features, feat_attr, max(getattr(features, feat_attr), val))
+
+        activities = report_data.get('activities', [])
+        services = report_data.get('services', [])
+        receivers = report_data.get('receivers', [])
+        providers = report_data.get('providers', [])
+
+        features.total_activities = len(activities) if isinstance(activities, list) else 0
+        features.total_services = len(services) if isinstance(services, list) else 0
+        features.total_receivers = len(receivers) if isinstance(receivers, list) else 0
+        features.total_providers = len(providers) if isinstance(providers, list) else 0
+
         return features
 
     def _extract_malware(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
@@ -472,8 +546,18 @@ class MobSFAnalyzer:
         """Extract hardcoded secrets and manifest flags"""
         secrets = report_data.get('hardcoded_secrets', [])
         if isinstance(secrets, list):
-            features.hardcoded_secrets = secrets
-        
+            features.hardcoded_secrets = list(secrets)
+
+        sast = report_data.get('sast_findings', {})
+        if isinstance(sast, dict):
+            all_findings = sast.get('high', []) + sast.get('medium', []) + sast.get('low', [])
+            for f in all_findings:
+                if isinstance(f, dict):
+                    title = str(f.get('title', '')).lower()
+                    rule_id = str(f.get('rule_id', '')).lower()
+                    if 'secret' in title or 'api_key' in rule_id or 'password' in title:
+                        features.hardcoded_secrets.append(f.get('title', 'Secret found'))
+
         manifest = report_data.get('manifest_analysis', {})
         if isinstance(manifest, dict):
             for key, value in manifest.items():
@@ -484,7 +568,17 @@ class MobSFAnalyzer:
                         features.has_backup = True
                     if 'secure' in str(key).lower() or 'FLAG_SECURE' in str(value):
                         features.has_secure_flag = True
-        
+        elif isinstance(manifest, list):
+            for item in manifest:
+                if isinstance(item, dict):
+                    title = str(item.get('title', '')).lower()
+                    if 'debuggable' in title:
+                        features.is_debuggable = True
+                    if 'backup' in title:
+                        features.has_backup = True
+                    if 'flag_secure' in title:
+                        features.has_secure_flag = True
+
         return features
 
     def _extract_trackers(self, features: RiskFeatures, report_data: Dict) -> RiskFeatures:
@@ -523,26 +617,17 @@ class MobSFAnalyzer:
     def _calculate_risk_scores(self, features: RiskFeatures) -> Dict[str, float]:
         """Calculate independent risk scores with corrected values"""
         
-        # ============================================================
-        # FIXED: Severity Findings Score (0-100) - Higher weight for high findings
-        # ============================================================
         severity_score = min(100, 
-            (features.high_findings * 25) +  # Increased from 20
-            (features.medium_findings * 10) +  # Increased from 8
+            (features.high_findings * 25) +
+            (features.medium_findings * 10) +
             (features.low_findings * 3)
         )
         
-        # ============================================================
-        # FIXED: Permission Score (0-100)
-        # ============================================================
-        perm_score = min(60, len(features.dangerous_perms) * 4)  # Increased base
+        perm_score = min(60, len(features.dangerous_perms) * 4)
         patterns, combo_weight = self.permission_detector.analyze(features.dangerous_perms)
-        combo_score = min(60, combo_weight * 2) if patterns else 0  # Increased weight
+        combo_score = min(60, combo_weight * 2) if patterns else 0
         permission_score = min(100, perm_score + combo_score)
         
-        # ============================================================
-        # FIXED: APKID Score (0-100) - Higher weights for anti-analysis
-        # ============================================================
         apkid_score = 0
         if features.has_packer:
             packer_weights = self.APKID_WEIGHTS['packer']
@@ -554,12 +639,12 @@ class MobSFAnalyzer:
                 else:
                     apkid_score += packer_weights['default']
             else:
-                apkid_score += 15  # Increased
+                apkid_score += 15
         
         if features.has_anti_vm:
-            apkid_score += 20  # Increased
+            apkid_score += 20
         if features.has_anti_debug:
-            apkid_score += 20  # Increased
+            apkid_score += 20
         if features.has_anti_hook:
             apkid_score += 15
         if features.has_reflection:
@@ -569,67 +654,48 @@ class MobSFAnalyzer:
         
         apkid_score = min(100, apkid_score)
         
-        # ============================================================
-        # FIXED: Malware Detection Score (0-100)
-        # ============================================================
         malware_score = 0
         if features.vt_positives > 0:
-            # Logarithmic scaling with higher base
             malware_score = min(100, int(25 * math.log(features.vt_positives + 1) * 3.5))
         
         if features.malware_permissions:
-            malware_score += min(30, len(features.malware_permissions) * 3)  # Increased
+            malware_score += min(30, len(features.malware_permissions) * 3)
         
         malware_score = min(100, malware_score)
         
-        # ============================================================
-        # FIXED: Network Security Score (0-100)
-        # ============================================================
         network_score = 0
         if features.has_cleartext_traffic:
-            network_score += 20  # Increased
+            network_score += 20
         if features.has_cert_pinning_bypass:
-            network_score += 25  # Increased
+            network_score += 25
         if features.trusts_user_ca:
-            network_score += 15  # Increased
+            network_score += 15
         network_score = min(100, network_score)
         
-        # ============================================================
-        # FIXED: Exported Components Score (0-100)
-        # ============================================================
         total_exported = (features.exported_activities + features.exported_services + 
                          features.exported_receivers + features.exported_providers)
-        component_score = min(100, total_exported * 5)  # Increased
+        component_score = min(100, total_exported * 5)
         
-        # ============================================================
-        # FIXED: Certificate Score (0-100)
-        # ============================================================
         cert_score = 0
         if features.cert_issues > 0:
-            cert_score += features.cert_issues * 15  # Increased
+            cert_score += features.cert_issues * 15
         if features.cert_expired:
-            cert_score += 40  # Increased
+            cert_score += 40
         elif features.cert_validity_days < 30 and features.cert_validity_days > 0:
-            cert_score += 25  # Increased
+            cert_score += 25
         elif features.cert_validity_days < 90:
-            cert_score += 15  # Increased
+            cert_score += 15
         cert_score = min(100, cert_score)
         
-        # ============================================================
-        # FIXED: Secrets Score (0-100)
-        # ============================================================
-        secrets_score = min(100, len(features.hardcoded_secrets) * 15)  # Increased
+        secrets_score = min(100, len(features.hardcoded_secrets) * 15)
         
-        # ============================================================
-        # FIXED: Manifest Flags Score (0-100)
-        # ============================================================
         manifest_score = 0
         if features.is_debuggable:
-            manifest_score += 20  # Increased
+            manifest_score += 20
         if features.has_backup:
-            manifest_score += 15  # Increased
+            manifest_score += 15
         if not features.has_secure_flag:
-            manifest_score += 10  # Increased
+            manifest_score += 10
         manifest_score = min(100, manifest_score)
         
         return {
@@ -649,9 +715,6 @@ class MobSFAnalyzer:
         Compute final risk score using corrected feature weights.
         Now properly weights malware detection and certificate issues.
         """
-        # ============================================================
-        # FIXED: CORRECTED FINAL CALCULATION
-        # ============================================================
         final_score = (
             risk_scores['severity_findings'] * self.FEATURE_WEIGHTS['high_findings'] +
             risk_scores['permissions'] * self.FEATURE_WEIGHTS['permission_combinations'] +
@@ -664,26 +727,19 @@ class MobSFAnalyzer:
             risk_scores['manifest_flags'] * self.FEATURE_WEIGHTS['manifest_flags']
         )
         
-        # ============================================================
-        # FIXED: Normalize to 0-100 with minimum score for detected issues
-        # ============================================================
-        # Ensure minimum score if any critical issues are detected
         min_score = 0
         if risk_scores['malware_detection'] > 0:
-            min_score = max(min_score, 40)  # At least 40 for malware
+            min_score = max(min_score, 40)
         if risk_scores['certificate'] > 30:
-            min_score = max(min_score, 25)  # At least 25 for cert issues
+            min_score = max(min_score, 25)
         if risk_scores['apkid_analysis'] > 50:
-            min_score = max(min_score, 35)  # At least 35 for packers/anti-analysis
+            min_score = max(min_score, 35)
         
         return max(min_score, min(100, int(final_score)))
 
     def _classify_risk(self, final_score: int, risk_scores: Dict[str, float]) -> Dict[str, Any]:
         """Classify risk with better thresholds"""
         
-        # ============================================================
-        # FIXED: BETTER CLASSIFICATION THRESHOLDS
-        # ============================================================
         if final_score >= 75:
             risk_level = "Critical Risk"
         elif final_score >= 60:
@@ -695,9 +751,6 @@ class MobSFAnalyzer:
         else:
             risk_level = "Minimal Risk"
         
-        # ============================================================
-        # FIXED: CONTEXTUAL OVERRIDES FOR CRITICAL ISSUES
-        # ============================================================
         if risk_scores['malware_detection'] >= 60:
             risk_level = "High Risk - Malware Detected"
         elif risk_scores['malware_detection'] >= 40:
@@ -711,7 +764,6 @@ class MobSFAnalyzer:
         if risk_scores['apkid_analysis'] >= 70:
             risk_level = f"{risk_level} (Heavy Obfuscation)"
         
-        # Generate risk flags
         flags = []
         if final_score >= 75:
             flags.append("🚨 CRITICAL: Immediate action required")
@@ -742,7 +794,6 @@ class MobSFAnalyzer:
         if risk_scores['certificate'] >= 50:
             flags.append(f"🔐 Certificate issues: {risk_scores['certificate']:.1f}%")
         
-        # Generate remediation suggestions
         remediation = []
         
         if risk_scores['malware_detection'] >= 40:
@@ -802,9 +853,9 @@ class MobSFAnalyzer:
 
     def _build_response(self, report_data: Dict, features: RiskFeatures, 
                        risk_scores: Dict[str, float], final_risk: int, 
-                       classification: Dict[str, Any], pdf_path: str, 
-                       pdf_base64: str) -> Dict[str, Any]:
-        """Build response"""
+                       classification: Dict[str, Any], pdf_path: Optional[str] = None, 
+                       pdf_base64: Optional[str] = None) -> Dict[str, Any]:
+        """Build standardized response"""
         legacy_flags = []
         if features.H > 0:
             legacy_flags.append(f"Found {features.H} High severity findings.")
@@ -830,6 +881,7 @@ class MobSFAnalyzer:
             legacy_flags.append(f"VirusTotal detected {features.MS} malware signatures.")
         
         return {
+            "status": "Success",
             "message": "Analysis Complete!",
             "pdf_report_url": f"/reports/{os.path.basename(pdf_path)}" if pdf_path else None,
             "pdf_base64": pdf_base64,
@@ -869,6 +921,10 @@ class MobSFAnalyzer:
                     "exported_services": features.exported_services,
                     "exported_receivers": features.exported_receivers,
                     "exported_providers": features.exported_providers,
+                    "total_activities": getattr(features, 'total_activities', 0),
+                    "total_services": getattr(features, 'total_services', 0),
+                    "total_receivers": getattr(features, 'total_receivers', 0),
+                    "total_providers": getattr(features, 'total_providers', 0),
                     "total": features.EC
                 },
                 "certificate": {
@@ -884,20 +940,19 @@ class MobSFAnalyzer:
                 }
             },
             "mobsf_summary": {
-                "app_name": report_data.get("app_name"),
-                "package_name": report_data.get("package_name"),
-                "version": report_data.get("version_name"),
+                "app_name": report_data.get("app_name") or report_data.get("file_name", "N/A"),
+                "package_name": report_data.get("package_name", "N/A"),
+                "version": report_data.get("version_name") or report_data.get("version", "1.0"),
                 "security_score": report_data.get("security_score", 0),
-                "min_sdk": report_data.get("min_sdk"),
-                "target_sdk": report_data.get("target_sdk"),
+                "min_sdk": report_data.get("min_sdk", "N/A"),
+                "target_sdk": report_data.get("target_sdk", "N/A"),
                 "file_count": report_data.get("file_count", 0),
                 "size": report_data.get("size", 0)
-            }
+            },
+            "permissions": report_data.get("permissions", []),
+            "sast_findings": report_data.get("sast_findings", {})
         }
 
-    # ========================================================================
-    # MOBSF API HELPER METHODS
-    # ========================================================================
 
     def _upload_file(self, file_path: str) -> Dict:
         """Upload file to MobSF — timeout 60s"""
@@ -937,35 +992,172 @@ class MobSFAnalyzer:
         return report_res.json()
 
     def _download_pdf_with_base64(self, hash_val: str) -> Tuple[Optional[str], Optional[str]]:
-        """Download PDF report — timeout 60s"""
+        """Download PDF report from official MobSF Docker container (with retry logic)"""
         headers = {'Authorization': self.MOBSF_API_KEY}
         pdf_url = f"{self.MOBSF_URL}/api/v1/download_pdf"
+        
+        import time
+        for attempt in range(3):
+            try:
+                pdf_res = requests.post(pdf_url, headers=headers,
+                                      data={'hash': hash_val}, stream=True, timeout=60)
+                if pdf_res.status_code == 200 and (b'%PDF' in pdf_res.content[:20]):
+                    os.makedirs("reports", exist_ok=True)
+                    pdf_filename = f"{hash_val}_mobsf_report.pdf"
+                    pdf_path = os.path.abspath(f"reports/{pdf_filename}")
+                    
+                    with open(pdf_path, 'wb') as f:
+                        f.write(pdf_res.content)
+                    
+                    pdf_base64 = base64.b64encode(pdf_res.content).decode('utf-8')
+                    return pdf_path, pdf_base64
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as ex:
+                print(f"MobSF Docker PDF download attempt {attempt + 1} note: {ex}")
+            time.sleep(2)
+        
+        return None, None
+
+    def _generate_local_pdf(self, hash_val: str, report_data: Dict, features: RiskFeatures,
+                            risk_scores: Dict[str, float], final_risk: int, 
+                            classification: Dict[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+        """Generates an official-styled MobSF PDF forensic report using ReportLab."""
         try:
-            pdf_res = requests.post(pdf_url, headers=headers,
-                                  data={'hash': hash_val}, stream=True, timeout=60)
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
-            return None, None
-        
-        pdf_path = None
-        pdf_base64 = None
-        
-        if pdf_res.status_code == 200:
+            from reportlab.lib.pagesizes import letter
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib import colors
+
             os.makedirs("reports", exist_ok=True)
             pdf_filename = f"{hash_val}_mobsf_report.pdf"
             pdf_path = os.path.abspath(f"reports/{pdf_filename}")
-            
-            with open(pdf_path, 'wb') as f:
-                for chunk in pdf_res.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            
-            with open(pdf_path, 'rb') as f:
-                pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
-        
-        return pdf_path, pdf_base64
 
-    # ========================================================================
-    # MOBSF DYNAMIC ANALYSIS METHODS
-    # ========================================================================
+            doc = SimpleDocTemplate(pdf_path, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+            styles = getSampleStyleSheet()
+
+            title_style = ParagraphStyle(
+                'TitleStyle', parent=styles['Heading1'], fontSize=18, leading=22,
+                textColor=colors.HexColor("#0f172a")
+            )
+            subtitle_style = ParagraphStyle(
+                'SubTitleStyle', parent=styles['Normal'], fontSize=9, leading=13,
+                textColor=colors.HexColor("#64748b")
+            )
+            h2_style = ParagraphStyle(
+                'H2Style', parent=styles['Heading2'], fontSize=11, leading=15,
+                textColor=colors.HexColor("#1e293b"), spaceBefore=10, spaceAfter=6
+            )
+            body_style = ParagraphStyle(
+                'BodyStyle', parent=styles['Normal'], fontSize=8.5, leading=12,
+                textColor=colors.HexColor("#334155")
+            )
+            flag_style = ParagraphStyle(
+                'FlagStyle', parent=styles['Normal'], fontSize=8.5, leading=12,
+                textColor=colors.HexColor("#991b1b")
+            )
+
+            elements = []
+
+            # Title Header
+            elements.append(Paragraph("<b>CYBERX FORENSICS — MOBSF STATIC ANALYSIS REPORT</b>", title_style))
+            elements.append(Paragraph(f"OWASP Mobile Security Framework Analysis • Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", subtitle_style))
+            elements.append(Spacer(1, 8))
+            elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor("#0284c7"), spaceAfter=12))
+
+            # Metadata Table
+            app_name = report_data.get("app_name") or report_data.get("file_name", "N/A")
+            pkg_name = report_data.get("package_name", "N/A")
+            version = report_data.get("version_name") or report_data.get("version", "1.0")
+            sdk = f"Min: API {report_data.get('min_sdk', 'N/A')} | Target: API {report_data.get('target_sdk', 'N/A')}"
+
+            meta_data = [
+                [Paragraph("<b>App Name</b>", body_style), Paragraph(str(app_name), body_style)],
+                [Paragraph("<b>Package Name</b>", body_style), Paragraph(str(pkg_name), body_style)],
+                [Paragraph("<b>Version</b>", body_style), Paragraph(str(version), body_style)],
+                [Paragraph("<b>SDK Target / Min</b>", body_style), Paragraph(sdk, body_style)],
+                [Paragraph("<b>SHA-256 Hash</b>", body_style), Paragraph(str(hash_val), body_style)],
+            ]
+            t_meta = Table(meta_data, colWidths=[140, 400])
+            t_meta.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (0,-1), colors.HexColor("#f8fafc")),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+                ('PADDING', (0,0), (-1,-1), 4),
+            ]))
+            elements.append(t_meta)
+            elements.append(Spacer(1, 12))
+
+            # Threat Verdict Banner
+            verdict = classification.get('risk_level', 'Unknown Risk')
+            bg_col = colors.HexColor("#fee2e2") if final_risk >= 60 else (colors.HexColor("#fef3c7") if final_risk >= 30 else colors.HexColor("#dcfce7"))
+            txt_col = colors.HexColor("#991b1b") if final_risk >= 60 else (colors.HexColor("#92400e") if final_risk >= 30 else colors.HexColor("#166534"))
+
+            banner_data = [[
+                Paragraph(f"<b>VERDICT: {verdict.upper()}</b>", ParagraphStyle('B1', parent=body_style, fontSize=11, textColor=txt_col, alignment=1)),
+                Paragraph(f"<b>THREAT SCORE: {final_risk} / 100</b>", ParagraphStyle('B2', parent=body_style, fontSize=11, textColor=txt_col, alignment=1))
+            ]]
+            t_banner = Table(banner_data, colWidths=[300, 240])
+            t_banner.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), bg_col),
+                ('BOX', (0,0), (-1,-1), 1, txt_col),
+                ('PADDING', (0,0), (-1,-1), 6),
+            ]))
+            elements.append(t_banner)
+            elements.append(Spacer(1, 12))
+
+            # Risk Dimension Breakdown Table
+            elements.append(Paragraph("<b>RISK DIMENSION ANALYSIS</b>", h2_style))
+            rows = [[Paragraph("<b>Risk Category</b>", body_style), Paragraph("<b>Score (%)</b>", body_style), Paragraph("<b>Status</b>", body_style)]]
+            for cat, sc in risk_scores.items():
+                cat_title = cat.replace('_', ' ').title()
+                st = "CRITICAL" if sc >= 75 else ("HIGH" if sc >= 50 else ("MEDIUM" if sc >= 25 else "LOW"))
+                rows.append([Paragraph(cat_title, body_style), Paragraph(f"{sc:.1f}%", body_style), Paragraph(st, body_style)])
+
+            t_breakdown = Table(rows, colWidths=[220, 160, 160])
+            t_breakdown.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0f172a")),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+                ('PADDING', (0,0), (-1,-1), 4),
+            ]))
+            elements.append(t_breakdown)
+            elements.append(Spacer(1, 12))
+
+            # Threat Flags
+            flags = classification.get('flags', [])
+            if flags:
+                elements.append(Paragraph("<b>DETECTED THREAT FLAGS & ANOMALIES</b>", h2_style))
+                for flg in flags:
+                    elements.append(Paragraph(f"• {flg}", flag_style))
+                elements.append(Spacer(1, 10))
+
+            # Remediation Suggestions
+            remediations = classification.get('remediation', [])
+            if remediations:
+                elements.append(Paragraph("<b>SECURITY REMEDIATION PLAN</b>", h2_style))
+                rem_rows = [[Paragraph("<b>Priority</b>", body_style), Paragraph("<b>Action Item</b>", body_style), Paragraph("<b>Details</b>", body_style)]]
+                for r in remediations:
+                    rem_rows.append([
+                        Paragraph(f"<b>{r.get('priority', 'P1')}</b>", body_style),
+                        Paragraph(r.get('action', ''), body_style),
+                        Paragraph(r.get('details', ''), body_style)
+                    ])
+                t_rem = Table(rem_rows, colWidths=[50, 180, 310])
+                t_rem.setStyle(TableStyle([
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1e293b")),
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                    ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+                    ('PADDING', (0,0), (-1,-1), 4),
+                ]))
+                elements.append(t_rem)
+
+            doc.build(elements)
+
+            with open(pdf_path, 'rb') as f:
+                pdf_b64 = base64.b64encode(f.read()).decode('utf-8')
+            return pdf_path, pdf_b64
+        except Exception as ex:
+            print(f"Local MobSF PDF generator error: {ex}")
+            return None, None
+
 
     def run_dynamic_analysis(self, file_path: str, wait_time: int = 30) -> Dict:
         """Uploads APK, starts dynamic analysis, waits, stops it, and gets report."""
@@ -976,7 +1168,6 @@ class MobSFAnalyzer:
             return {"error": "MobSF API key not configured"}
             
         try:
-            # 0. Quick connectivity check
             try:
                 requests.get(self.MOBSF_URL, timeout=5)
             except requests.exceptions.ConnectionError:
@@ -984,7 +1175,6 @@ class MobSFAnalyzer:
             except requests.exceptions.Timeout:
                 return {"error": f"MobSF at {self.MOBSF_URL} is not responding (timeout). Is it running?"}
 
-            # 1. Upload APK
             upload_data = self._upload_file(file_path)
             if 'error' in upload_data:
                 return upload_data
@@ -993,7 +1183,6 @@ class MobSFAnalyzer:
             
             headers = {'Authorization': self.MOBSF_API_KEY}
             
-            # 2. Start Dynamic Analysis
             start_url = f"{self.MOBSF_URL}/api/v1/dynamic/start_analysis"
             start_res = requests.post(start_url, headers=headers, data={'hash': hash_val}, timeout=60)
             if start_res.status_code != 200:
@@ -1002,13 +1191,11 @@ class MobSFAnalyzer:
             import time
             time.sleep(wait_time)
             
-            # 3. Stop Dynamic Analysis
             stop_url = f"{self.MOBSF_URL}/api/v1/dynamic/stop_analysis"
             stop_res = requests.post(stop_url, headers=headers, data={'hash': hash_val}, timeout=60)
             if stop_res.status_code != 200:
                 return {"error": f"Failed to stop dynamic analysis: {stop_res.text}"}
                 
-            # 4. Get Dynamic Report
             report_url = f"{self.MOBSF_URL}/api/v1/dynamic/report_json"
             report_res = requests.post(report_url, headers=headers, data={'hash': hash_val}, timeout=60)
             if report_res.status_code != 200:
@@ -1023,9 +1210,6 @@ class MobSFAnalyzer:
         except Exception as e:
             return {"error": str(e)}
 
-# ============================================================================
-# GLOBAL INSTANCE AND EXPOSED FUNCTION
-# ============================================================================
 
 _analyzer = MobSFAnalyzer()
 
