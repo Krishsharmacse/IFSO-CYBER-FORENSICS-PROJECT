@@ -60,6 +60,11 @@ class AutopsyRequest(BaseModel):
     image_path: str
     scan_type: str = "mmls"
 
+class AutopsyRecoverRequest(BaseModel):
+    drive_path: str
+    inode: str
+    output_name: str | None = None
+
 class GhidraRequest(BaseModel):
     file_path: str
     extract_code: bool = True
@@ -138,6 +143,12 @@ def analyze_yara(req: YaraRequest, db: Session = Depends(get_db)):
 def analyze_autopsy(req: AutopsyRequest, db: Session = Depends(get_db)):
     results = autopsy_wrapper.run_sleuthkit(req.image_path, req.scan_type)
     inv = _save(db, req.image_path, f"sleuthkit_{req.scan_type}", results)
+    return {"id": inv.id, "status": inv.status, "results": results}
+
+@app.post("/analyze/autopsy/recover")
+def recover_autopsy(req: AutopsyRecoverRequest, db: Session = Depends(get_db)):
+    results = autopsy_wrapper.recover_deleted_file(req.drive_path, req.inode, req.output_name)
+    inv = _save(db, req.drive_path, "sleuthkit_recover", results)
     return {"id": inv.id, "status": inv.status, "results": results}
 
 @app.get("/analyze/ghidra/progress")
@@ -377,4 +388,7 @@ def generate_report(inv_id: int, db: Session = Depends(get_db)):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+# Hot reload trigger
+
 

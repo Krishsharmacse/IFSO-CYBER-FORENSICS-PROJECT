@@ -1,0 +1,71 @@
+Return-Path: <billing@secure-payments.com>
+Received: from mx.company.com (mx.company.com [198.51.100.10])
+    by mail.victim.com with ESMTP id A123456789;
+    Tue, 29 Jul 2026 09:15:22 +0530
+Received: from unknown (HELO mail.secure-payments.com)
+    (203.0.113.45)
+    by mx.company.com with SMTP;
+    Tue, 29 Jul 2026 09:15:18 +0530
+From: "PayPal Security" <billing@secure-payments.com>
+Reply-To: support.verify.account@gmail.com
+To: victim@example.com
+Subject: Urgent: Your Account Has Been Limited
+Date: Tue, 29 Jul 2026 09:15:10 +0530
+Message-ID: <20260729091510.12345@mail.secure-payments.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="----=_Part_123456_789012345"
+
+------=_Part_123456_789012345
+Content-Type: text/plain; charset="UTF-8"
+
+Dear Customer,
+
+We detected unusual activity on your account.
+
+Your account has been temporarily limited for your protection.
+
+To restore access immediately, verify your account using the secure portal below:
+
+https://paypal-account-verification.example/login
+
+Failure to verify within 24 hours may result in permanent suspension.
+
+Thank you,
+PayPal Security Team
+
+------=_Part_123456_789012345
+Content-Type: text/html; charset="UTF-8"
+
+<html>
+<head><title>Security Alert</title></head>
+<body>
+<p>Dear Customer,</p>
+
+<p>We detected unusual activity on your account.</p>
+
+<p><b>Your account has been temporarily limited.</b></p>
+
+<p>
+Click the secure verification link below:
+</p>
+
+<p>
+<a href="https://paypal-account-verification.example/login">
+Verify Your Account
+</a>
+</p>
+
+<p>
+Failure to verify within 24 hours may result in permanent suspension.
+</p>
+
+<p>
+Regards,<br>
+PayPal Security Team
+</p>
+
+</body>
+</html>
+
+------=_Part_123456_789012345--

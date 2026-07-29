@@ -1,7 +1,4 @@
-"""
-Advanced Sleuth Kit Forensic Analyzer (Enterprise Edition)
-A highly resilient, memory-optimized, and SIEM-integrated DFIR wrapper.
-"""
+
 
 import os
 import re
@@ -263,12 +260,233 @@ def run_enterprise_pipeline(image: str, output: str, offset: Optional[int] = Non
     return results
 
 
+def _parse_fls_line(line: str) -> dict | None:
+    """Parse a single fls output line into a structured dict.
+    fls -l output format:  type inode\tname\tmod\tacc\tchg\tcre\tsize\tuid\tgid
+    fls short output:      type inode:\tname
+    """
+    if not line.strip():
+        return None
+
+    is_deleted = line.startswith('*') or '(deleted)' in line
+
+    # Try long-format first (tab-separated with >= 7 fields)
+    parts = line.split('\t')
+    if len(parts) >= 7:
+        type_inode = parts[0].split()
+        entry_type = type_inode[0] if type_inode else 'unknown'
+        inode = type_inode[1].rstrip(':') if len(type_inode) > 1 else ''
+        path = parts[1].strip().lstrip('/')
+        name = os.path.basename(path) if path else ''
+        size_str = parts[6].strip() if len(parts) > 6 else '0'
+        size = int(size_str) if size_str.isdigit() else 0
+        mod_time = parts[2].strip() if len(parts) > 2 else ''
+        acc_time = parts[3].strip() if len(parts) > 3 else ''
+        chg_time = parts[4].strip() if len(parts) > 4 else ''
+        cre_time = parts[5].strip() if len(parts) > 5 else ''
+    else:
+        # Short format: "type inode:\tpath"
+        type_inode_part = parts[0].split()
+        entry_type = type_inode_part[0] if type_inode_part else 'unknown'
+        inode = type_inode_part[1].rstrip(':') if len(type_inode_part) > 1 else ''
+        path = parts[1].strip().lstrip('/') if len(parts) > 1 else ''
+        name = os.path.basename(path) if path else ''
+        size = 0
+        mod_time = acc_time = chg_time = cre_time = ''
+
+    if not name or name in ('.', '..'):
+        return None
+
+    ext = os.path.splitext(name)[1].lower()
+
+    return {
+        'name': name,
+        'path': path,
+        'inode': inode,
+        'size': size,
+        'type': entry_type.replace('*', ''),
+        'extension': ext,
+        'is_deleted': is_deleted,
+        'modified': mod_time,
+        'accessed': acc_time,
+        'changed': chg_time,
+        'created': cre_time,
+    }
+
+
+def scan_live_drive_deleted(folder_path: str) -> dict:
+    """
+    Scan a live Windows drive for deleted files using SleuthKit fls.
+    Accepts a folder path (e.g. D:\\burger) or drive root (e.g. D:\\).
+    Resolves the drive letter to \\\\.\\D: device path for raw access.
+    """
+    results = {}
+
+    # Normalise and extract drive letter
+    folder_path = os.path.abspath(folder_path)
+    drive, remainder = os.path.splitdrive(folder_path)
+    if not drive:
+        return {'error': f'Could not determine drive letter from: {folder_path}'}
+
+    drive_letter = drive.rstrip(':')
+    device_path = f'\\\\.\\{drive_letter}:'
+
+    # Determine sub-folder filter (e.g. "burger/" from D:\burger)
+    sub_folder = remainder.strip(os.sep).replace('\\', '/').lower()
+
+    fls = get_sleuthkit_tool('fls')
+
+    try:
+        # Run fls -r -l on the device to get ALL files (deleted + existing)
+        # We list everything and filter deleted ones ourselves for better results
+        proc = run([fls, '-r', '-l', device_path], timeout=300)
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.strip()
+            if 'Permission denied' in stderr or 'Access is denied' in stderr or 'Error opening' in stderr:
+                return {
+                    'error': 'Access denied reading raw volume. The backend must run as Administrator.',
+                    'fix': 'Close the current terminal, open a new one as Administrator, and re-run: uv run .\\main.py',
+                    'details': stderr
+                }
+            return {'error': f'fls failed on {device_path}', 'details': stderr}
+
+        output_lines = proc.stdout.strip().split('\n')
+
+        all_files = []
+        deleted_files = []
+
+        for line in output_lines:
+            entry = _parse_fls_line(line)
+            if not entry:
+                continue
+
+            # If user specified a sub-folder, filter to that path
+            if sub_folder:
+                entry_path_lower = entry['path'].lower()
+                if not entry_path_lower.startswith(sub_folder):
+                    continue
+
+            all_files.append(entry)
+            if entry['is_deleted']:
+                deleted_files.append(entry)
+
+        results['status'] = 'Success'
+        results['drive'] = f'{drive_letter}:'
+        results['device'] = device_path
+        results['target_folder'] = folder_path
+        results['sub_folder_filter'] = sub_folder or '(entire drive)'
+        results['total_files_scanned'] = len(all_files)
+        results['deleted_files_found'] = len(deleted_files)
+        results['deleted_files'] = deleted_files[:500]
+        if len(deleted_files) > 500:
+            results['notice'] = f'Showing first 500 of {len(deleted_files)} deleted files.'
+        results['summary'] = {
+            'by_extension': {},
+            'total_deleted_size_bytes': 0,
+        }
+
+        for f in deleted_files:
+            ext = f['extension'] or '(no extension)'
+            results['summary']['by_extension'][ext] = results['summary']['by_extension'].get(ext, 0) + 1
+            results['summary']['total_deleted_size_bytes'] += f['size']
+
+        # Human-readable size
+        total_bytes = results['summary']['total_deleted_size_bytes']
+        if total_bytes >= 1073741824:
+            results['summary']['total_deleted_size'] = f'{total_bytes / 1073741824:.2f} GB'
+        elif total_bytes >= 1048576:
+            results['summary']['total_deleted_size'] = f'{total_bytes / 1048576:.2f} MB'
+        elif total_bytes >= 1024:
+            results['summary']['total_deleted_size'] = f'{total_bytes / 1024:.2f} KB'
+        else:
+            results['summary']['total_deleted_size'] = f'{total_bytes} B'
+
+    except FileNotFoundError:
+        results['error'] = 'SleuthKit fls not found. Install SleuthKit and add bin/ to PATH.'
+    except Exception as e:
+        results['error'] = f'Live drive scan failed: {str(e)}'
+
+    return results
+
+
+def recover_deleted_file(drive_path: str, inode: str, output_name: str = None) -> dict:
+    """
+    Recover a single deleted file from a live drive by inode using icat.
+    drive_path: e.g. "D:\\" or "D:\\burger"
+    inode: the inode number from fls output
+    output_name: optional filename; defaults to "recovered_<inode>"
+    """
+    drive, _ = os.path.splitdrive(os.path.abspath(drive_path))
+    if not drive:
+        return {'error': f'Could not determine drive letter from: {drive_path}'}
+
+    drive_letter = drive.rstrip(':')
+    device_path = f'\\\\.\\{drive_letter}:'
+
+    icat = get_sleuthkit_tool('icat')
+
+    # Create a recovery output directory
+    recovery_dir = os.path.join(tempfile.gettempdir(), 'cyberx_recovered')
+    os.makedirs(recovery_dir, exist_ok=True)
+
+    safe_name = output_name or f'recovered_{inode}'
+    # Sanitise filename
+    safe_name = re.sub(r'[<>:"/\\|?*]', '_', safe_name)
+    out_file = os.path.join(recovery_dir, safe_name)
+
+    try:
+        proc = subprocess.run(
+            [icat, device_path, inode],
+            capture_output=True,
+            timeout=60
+        )
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode('utf-8', errors='replace').strip()
+            if 'Permission denied' in stderr or 'Access is denied' in stderr:
+                return {'error': 'Access denied. Run backend as Administrator.', 'details': stderr}
+            return {'error': f'icat failed for inode {inode}', 'details': stderr}
+
+        if not proc.stdout:
+            return {
+                'status': 'Warning',
+                'message': f'Inode {inode} returned 0 bytes — file content may have been overwritten.',
+                'inode': inode
+            }
+
+        with open(out_file, 'wb') as f:
+            f.write(proc.stdout)
+
+        # Hash the recovered file
+        sha256 = hashlib.sha256(proc.stdout).hexdigest()
+
+        return {
+            'status': 'Recovered',
+            'inode': inode,
+            'output_file': out_file,
+            'size_bytes': len(proc.stdout),
+            'sha256': sha256,
+            'message': f'File recovered successfully to {out_file}'
+        }
+
+    except FileNotFoundError:
+        return {'error': 'SleuthKit icat not found. Install SleuthKit and add bin/ to PATH.'}
+    except subprocess.TimeoutExpired:
+        return {'error': f'Recovery timed out for inode {inode}'}
+    except Exception as e:
+        return {'error': f'Recovery failed: {str(e)}'}
+
 
 def run_sleuthkit(image_path: str, scan_type: str = "mmls"):
     """
-    Uses Sleuth Kit to analyse a disk image.
-    Supports mmls, fsstat, fls, timeline, enterprise — cross-platform (Windows + Linux).
+    Uses Sleuth Kit to analyse a disk image or live drive.
+    Supports mmls, fsstat, fls, timeline, enterprise, deleted_files — cross-platform (Windows + Linux).
     """
+    # For deleted_files mode, delegate to the live-drive scanner (no image file needed)
+    if scan_type == "deleted_files":
+        return scan_live_drive_deleted(image_path)
+
     if not os.path.exists(image_path):
         return {"error": f"Disk image file not found: {image_path}"}
 

@@ -49,3 +49,4 @@ dist/
 .idea/
 *.swp
 *.swo
+random_forest_model.pkl

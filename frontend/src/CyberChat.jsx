@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Bot, User, Trash2, Copy, CheckCheck, Minimize2, Maximize2, Code, Zap } from 'lucide-react';
-
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
+const OPENROUTER_MODEL = import.meta.env.VITE_OPENROUTER_MODEL || 'nvidia/nemotron-nano-9b-v2:free';
 
 const SYSTEM_PROMPT = `You are CyberX AI — an elite cybersecurity and coding intelligence assistant embedded in a professional digital forensics platform. You are knowledgeable about:
 

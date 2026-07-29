@@ -452,7 +452,7 @@ function App() {
                 className="input-field cyber-input"
                 placeholder={
                   activeTab === 'ip_resolver' ? "8.8.8.8 or 2001:4860:4860::8888" :
-                    activeTab === 'autopsy' ? "/path/to/evidence/image.dd or .E01" :
+                  activeTab === 'autopsy' ? (sleuthkitScanType === 'deleted_files' ? "D:\\burger or D:\\" : "/path/to/evidence/image.dd or .E01") :
                     activeTab === 'ghidra' ? "/path/to/malware/sample.exe" :
                       activeTab === 'mobsf' || activeTab === 'androguard' ? "/path/to/mobile/app.apk" :
                         activeTab === 'volatility' ? "/path/to/memory/dump.vmem" :
@@ -565,7 +565,14 @@ function App() {
                   <option value="fls">List All Files & Deleted (fls)</option>
                   <option value="timeline">Generate Activity Timeline (mactime)</option>
                   <option value="enterprise">Enterprise Extraction Pipeline</option>
+                  <option value="deleted_files">🔍 Find Deleted Files (Live Drive)</option>
                 </select>
+                {sleuthkitScanType === 'deleted_files' && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--accent)', marginTop: '0.4rem', fontFamily: 'monospace', lineHeight: 1.5 }}>
+                    ⚡ Scans a live drive/USB for deleted files via raw volume access.<br />
+                    ⚠ Requires backend running as <strong>Administrator</strong>.
+                  </div>
+                )}
               </div>
             )}
 
@@ -1490,6 +1497,392 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
       );
     }
 
+    case 'email': {
+      if (data.error) return <div className="verdict-banner danger">{data.error}</div>;
+
+      const summary = data.parsed_summary || {};
+      const threatFlags = data.threat_flags || [];
+      const score = data.threat_score || 0;
+      const verdict = data.analysis_verdict || 'ANALYZED';
+      const emailData = data.email_data || {};
+      const headerObj = emailData.header || {};
+      const bodyParts = emailData.body || [];
+
+      const circ = 2 * Math.PI * 45;
+      const offset = circ - (score / 100) * circ;
+
+      return (
+        <div className="report-email-phishing" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Top Threat & Risk Summary Card */}
+          <div className="mobsf-stats-grid">
+            {/* Risk Gauge */}
+            <div className="stat-card score-gauge-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>PHISHING THREAT INDEX</h4>
+              <div className="gauge-container">
+                <svg width="120" height="120" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.05)" strokeWidth="6" fill="transparent" />
+                  <circle cx="50" cy="50" r="45"
+                    stroke={score >= 60 ? '#ef4444' : score >= 30 ? '#f59e0b' : '#10b981'}
+                    strokeWidth="6"
+                    strokeDasharray={circ}
+                    strokeDashoffset={offset}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    transform="rotate(-90 50 50)" />
+                  <text x="50" y="55" textAnchor="middle" fill="#fff" fontSize="18" fontWeight="bold">
+                    {score}
+                  </text>
+                  <text x="50" y="72" textAnchor="middle" fill="var(--text-muted)" fontSize="8">
+                    Risk Score
+                  </text>
+                </svg>
+              </div>
+              <span className={`badge ${score >= 60 ? 'failed' : score >= 30 ? 'warning' : 'success'}`} style={{ marginTop: '0.5rem' }}>
+                {verdict}
+              </span>
+            </div>
+
+            {/* Email Header Overview */}
+            <div className="stat-card app-profile-card cyber-panel" style={{ gridColumn: 'span 2' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>EMAIL HEADER INTEL</h4>
+              <div className="profile-grid">
+                <div><span>Subject:</span> <strong style={{ color: '#00f0ff' }}>{summary.subject || headerObj.subject || 'N/A'}</strong></div>
+                <div><span>From (Display):</span> <strong style={{ color: summary.from_display?.includes('<') && summary.from_display?.split('<')[0]?.toLowerCase().includes('paypal') ? '#ef4444' : '#fff' }}>{summary.from_display || headerObj.from || 'N/A'}</strong></div>
+                <div><span>From Email:</span> <code>{summary.from_email || headerObj.from || 'N/A'}</code></div>
+                <div><span>Reply-To:</span> <code style={{ color: summary.reply_to && summary.reply_to !== 'Same as From' && summary.reply_to !== summary.from_email ? '#ef4444' : '#fff' }}>{summary.reply_to || 'N/A'}</code></div>
+                <div><span>To:</span> <span>{Array.isArray(summary.to) ? summary.to.join(', ') : summary.to || 'N/A'}</span></div>
+                <div><span>Originating IP:</span> <code style={{ color: '#f59e0b' }}>{summary.originating_ip || 'N/A'}</code></div>
+                <div><span>Message-ID:</span> <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{summary.message_id || 'N/A'}</span></div>
+                <div><span>Date:</span> <span>{summary.date || headerObj.date || 'N/A'}</span></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Phishing Red Flags & Indicators */}
+          <div className="stat-card cyber-panel">
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4>CRITICAL PHISHING INDICATORS & RED FLAGS ({threatFlags.length})</h4>
+            <div className="remediation-list">
+              {threatFlags.length > 0 ? (
+                threatFlags.map((flag, idx) => (
+                  <div key={idx} className="remediation-item" style={{ borderLeft: '3px solid #ef4444', backgroundColor: 'rgba(239,68,68,0.04)', padding: '0.75rem', borderRadius: '4px', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <AlertTriangle size={16} className="text-danger" style={{ color: '#ef4444' }} />
+                      <span style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>Indicator #{idx + 1}</span>
+                    </div>
+                    <p style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.35rem', lineHeight: '1.4' }}>{flag}</p>
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: '#10b981', textAlign: 'center', padding: '1.5rem' }}>
+                  <CheckCircle size={24} style={{ display: 'block', margin: '0 auto 0.5rem' }} />
+                  <span>No explicit phishing red flags or header spoofing indicators detected.</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Received Mail Server Routing Hops */}
+          {summary.received_hops && summary.received_hops.length > 0 && (
+            <div className="stat-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>MAIL SERVER ROUTING HOPS (RECEIVED HEADERS)</h4>
+              <div className="pcap-table-wrapper" style={{ marginTop: '0.75rem' }}>
+                <table className="metadata-table">
+                  <thead>
+                    <tr>
+                      <th>HOP #</th>
+                      <th>SOURCE / FROM</th>
+                      <th>RECEIVING MX / BY</th>
+                      <th>PROTOCOL / WITH</th>
+                      <th>TIMESTAMP</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.received_hops.map((hop, idx) => (
+                      <tr key={idx}>
+                        <td style={{ fontWeight: 'bold', color: '#00f0ff', fontFamily: 'monospace' }}>#{idx + 1}</td>
+                        <td className="prop-val">
+                          {Array.isArray(hop.from) ? hop.from.join(' ') : hop.src || 'Unknown'}
+                        </td>
+                        <td className="prop-val">
+                          {Array.isArray(hop.by) ? hop.by.join(', ') : 'Unknown'}
+                        </td>
+                        <td><code>{hop.with || 'N/A'}</code></td>
+                        <td style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>{hop.date || 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Fingerprints & Body Hashes */}
+          <div className="mobsf-details-grid">
+            {/* Body MIME & Hashes */}
+            <div className="stat-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>MIME BODY PARTS & CRYPTOGRAPHIC HASHES</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                {bodyParts.length > 0 ? (
+                  bodyParts.map((part, idx) => (
+                    <div key={idx} style={{ padding: '0.65rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#00f0ff', fontWeight: 'bold' }}>{part.content_type || 'text/plain'}</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Boundary: {part.boundary || 'N/A'}</span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', fontFamily: 'monospace', wordBreak: 'break-all', color: '#a5b4fc' }}>
+                        Hash: {part.hash || 'N/A'}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No MIME body parts found.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Extracted URI & Domain Fingerprints */}
+            <div className="stat-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>EXTRACTED URIS, DOMAINS & FINGERPRINTS</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+                {summary.extracted_uris && summary.extracted_uris.length > 0 && (
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>EXTRACTED TARGET URLS ({summary.extracted_uris.length}):</span>
+                    {summary.extracted_uris.map((url, i) => (
+                      <div key={i} style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#f87171', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239,68,68,0.2)', padding: '6px 8px', borderRadius: '4px', marginTop: '4px', wordBreak: 'break-all' }}>
+                        🔗 {url}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {summary.extracted_domains && summary.extracted_domains.length > 0 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 'bold' }}>SUSPICIOUS DOMAINS ({summary.extracted_domains.length}):</span>
+                    {summary.extracted_domains.map((dom, i) => (
+                      <div key={i} style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56,189,248,0.2)', padding: '4px 8px', borderRadius: '4px', marginTop: '4px' }}>
+                        🌐 {dom}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {summary.uri_hashes && summary.uri_hashes.length > 0 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontWeight: 'bold' }}>URI SHA-256 Hashes ({summary.uri_hashes.length}):</span>
+                    {summary.uri_hashes.map((uh, i) => (
+                      <div key={i} style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#e2e8f0', background: 'rgba(0,0,0,0.3)', padding: '4px 6px', borderRadius: '3px', marginTop: '4px', wordBreak: 'break-all' }}>
+                        {uh}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {summary.domain_hashes && summary.domain_hashes.length > 0 && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#a855f7', fontWeight: 'bold' }}>Domain SHA-256 Hashes ({summary.domain_hashes.length}):</span>
+                    {summary.domain_hashes.map((dh, i) => (
+                      <div key={i} style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: '#e2e8f0', background: 'rgba(0,0,0,0.3)', padding: '4px 6px', borderRadius: '3px', marginTop: '4px', wordBreak: 'break-all' }}>
+                        {dh}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(!summary.extracted_uris || summary.extracted_uris.length === 0) && (!summary.uri_hashes || summary.uri_hashes.length === 0) && (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No URL or domain hashes extracted from email body.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    case 'evtx': {
+      if (data.error) return <div className="verdict-banner danger">{data.error}</div>;
+
+      const records = data.records || [];
+      const suspiciousLogons = data.suspicious_logons || [];
+      const totalParsed = data.total_records_parsed || records.length;
+
+      return (
+        <div className="report-evtx" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Top Summary Panel */}
+          <div className="mobsf-stats-grid">
+            <div className="stat-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>PARSED EVENT LOGS</h4>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00f0ff', marginTop: '0.5rem', fontFamily: 'monospace' }}>
+                {totalParsed}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Records Extracted</span>
+            </div>
+
+            <div className="stat-card cyber-panel" style={{ borderLeft: suspiciousLogons.length > 0 ? '4px solid #ef4444' : '4px solid #10b981' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>SUSPICIOUS LOGONS / ANOMALIES</h4>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: suspiciousLogons.length > 0 ? '#ef4444' : '#10b981', marginTop: '0.5rem', fontFamily: 'monospace' }}>
+                {suspiciousLogons.length}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Failed Logons (4625) & Privilege Assignments (4672)</span>
+            </div>
+          </div>
+
+          {/* Suspicious Logon Events List */}
+          {suspiciousLogons.length > 0 && (
+            <div className="stat-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>CRITICAL EVENT ANOMALIES ({suspiciousLogons.length})</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+                {suspiciousLogons.map((item, idx) => (
+                  <div key={idx} style={{ padding: '0.75rem', background: 'rgba(239, 68, 68, 0.05)', borderLeft: '3px solid #ef4444', borderRadius: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontWeight: 'bold', color: '#ef4444', fontSize: '0.85rem' }}>Event ID {item.event_id}: {item.type}</span>
+                    </div>
+                    <pre style={{ margin: 0, fontSize: '0.72rem', fontFamily: 'monospace', color: '#cbd5e1', whiteSpace: 'pre-wrap', background: 'rgba(0,0,0,0.3)', padding: '0.5rem', borderRadius: '3px' }}>
+                      {item.xml}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* XML Records List */}
+          <div className="stat-card cyber-panel">
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4>EVENT LOG XML RECORDS ({records.length})</h4>
+            <div style={{ maxHeight: '450px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.75rem' }}>
+              {records.length > 0 ? (
+                records.map((xml, idx) => (
+                  <div key={idx} style={{ padding: '0.65rem', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#00f0ff', fontWeight: 'bold', marginBottom: '0.25rem' }}>Record #{idx + 1}</div>
+                    <pre style={{ margin: 0, fontSize: '0.7rem', fontFamily: 'monospace', color: '#a5b4fc', whiteSpace: 'pre-wrap', maxHeight: '120px', overflowY: 'auto' }}>
+                      {xml}
+                    </pre>
+                  </div>
+                ))
+              ) : (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '1rem', textAlign: 'center' }}>No EVTX records parsed.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    case 'hash': {
+      if (data.error) return <div className="verdict-banner danger">{data.error}</div>;
+
+      const cracked = data.cracked_passwords || [];
+      const uncracked = data.uncracked_hashes || [];
+      const total = data.total_hashes || (cracked.length + uncracked.length);
+      const recoveryRate = data.recovery_rate || (total > 0 ? ((cracked.length / total) * 100).toFixed(1) : 0);
+      const algo = data.detected_type || 'MD5 / SHA';
+
+      return (
+        <div className="report-hash-cracking" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Top Summary Cards */}
+          <div className="mobsf-stats-grid">
+            <div className="stat-card cyber-panel" style={{ borderLeft: '4px solid #10b981' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>CRACKED PASSWORDS</h4>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#10b981', marginTop: '0.5rem', fontFamily: 'monospace' }}>
+                {cracked.length} / {total}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{recoveryRate}% Recovery Rate</span>
+            </div>
+
+            <div className="stat-card cyber-panel">
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>DETECTED HASH TYPE</h4>
+              <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: '#00f0ff', marginTop: '0.5rem', fontFamily: 'monospace' }}>
+                {algo}
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Auto-detected Format</span>
+            </div>
+          </div>
+
+          {/* Cracked Passwords Table */}
+          <div className="stat-card cyber-panel">
+            <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+            <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+            <h4>RECOVERED PLAINTEXT PASSWORDS ({cracked.length})</h4>
+            <div className="pcap-table-wrapper" style={{ marginTop: '0.75rem' }}>
+              <table className="metadata-table">
+                <thead>
+                  <tr>
+                    <th>TARGET HASH</th>
+                    <th>CRACKED PLAINTEXT PASSWORD</th>
+                    <th>ALGORITHM</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cracked.length > 0 ? (
+                    cracked.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="prop-val">
+                          <code style={{ fontSize: '0.75rem', color: '#a5b4fc' }}>{item.hash}</code>
+                        </td>
+                        <td style={{ fontWeight: 'bold', color: '#10b981', fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                          🔑 {item.plaintext}
+                        </td>
+                        <td>
+                          <span style={{ background: 'rgba(0,240,255,0.1)', color: '#00f0ff', border: '1px solid rgba(0,240,255,0.3)', padding: '2px 6px', borderRadius: '3px', fontSize: '0.7rem' }}>
+                            {item.algorithm || algo}
+                          </span>
+                        </td>
+                        <td>
+                          <span className="badge success">CRACKED</span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
+                        No hashes cracked in this session.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Uncracked Hashes if any */}
+          {uncracked.length > 0 && (
+            <div className="stat-card cyber-panel" style={{ borderLeft: '4px solid #f59e0b' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4>UNCRACKED HASHES ({uncracked.length})</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {uncracked.map((h, idx) => (
+                  <div key={idx} style={{ padding: '0.4rem 0.6rem', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '4px', fontSize: '0.75rem', fontFamily: 'monospace', color: '#f59e0b' }}>
+                    {h}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
     case 'network': {
       if (data.error) return <div className="verdict-banner danger">{data.error}</div>;
 
@@ -2141,6 +2534,187 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
               )}
             </div>
           </div>
+        </div>
+      );
+    }
+
+    case 'autopsy': {
+      // Dedicated view for deleted_files scan results
+      const deletedFiles = data.deleted_files || [];
+      const summary = data.summary || {};
+      const byExt = summary.by_extension || {};
+      const hasDeletedResults = deletedFiles.length > 0;
+
+      // Fallback for non-deleted_files modes (partitions, fls, timeline, etc.)
+      if (!data.deleted_files && !data.deleted_files_found && data.deleted_files_found !== 0) {
+        // Render generic for mmls/fsstat/fls/timeline modes
+        const keys = Object.keys(data);
+        if (keys.length === 0) return <p style={{ color: 'var(--text-muted)' }}>No data returned.</p>;
+        return (
+          <div className="report-generic">
+            <h4>DISK ANALYSIS RESULTS</h4>
+            <div className="metadata-table-wrapper" style={{ marginTop: '1rem' }}>
+              <table className="metadata-table">
+                <thead><tr><th>FIELD</th><th>VALUE</th></tr></thead>
+                <tbody>
+                  {keys.map(k => (
+                    <tr key={k}>
+                      <td className="prop-name">{k.replace(/_/g, ' ').toUpperCase()}</td>
+                      <td className="prop-val">
+                        {typeof data[k] === 'object' ? (
+                          <pre style={{ fontFamily: 'monospace', color: '#a5b4fc', fontSize: '0.75rem', margin: 0 }}>
+                            {JSON.stringify(data[k], null, 2)}
+                          </pre>
+                        ) : String(data[k])}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="report-deleted-files">
+          {/* Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div className="stat-card cyber-panel" style={{ padding: '1.2rem', textAlign: 'center' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#ef4444' }}>{data.deleted_files_found || 0}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem', fontFamily: 'monospace' }}>DELETED FILES FOUND</div>
+            </div>
+            <div className="stat-card cyber-panel" style={{ padding: '1.2rem', textAlign: 'center' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <div style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--primary)' }}>{data.total_files_scanned || 0}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem', fontFamily: 'monospace' }}>TOTAL FILES SCANNED</div>
+            </div>
+            <div className="stat-card cyber-panel" style={{ padding: '1.2rem', textAlign: 'center' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#f59e0b' }}>{summary.total_deleted_size || '0 B'}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem', fontFamily: 'monospace' }}>RECOVERABLE DATA</div>
+            </div>
+            <div className="stat-card cyber-panel" style={{ padding: '1.2rem', textAlign: 'center' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#a78bfa', fontFamily: 'monospace' }}>{data.drive || '?'}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.3rem', fontFamily: 'monospace' }}>TARGET DRIVE</div>
+            </div>
+          </div>
+
+          {/* Extension Breakdown */}
+          {Object.keys(byExt).length > 0 && (
+            <div className="cyber-panel" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
+              <div className="cyber-corner-tl"></div><div className="cyber-corner-tr"></div>
+              <div className="cyber-corner-bl"></div><div className="cyber-corner-br"></div>
+              <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.8rem', color: 'var(--primary)', fontFamily: 'monospace' }}>DELETED FILE TYPES</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {Object.entries(byExt).sort((a, b) => b[1] - a[1]).map(([ext, count]) => (
+                  <span key={ext} style={{
+                    padding: '0.3rem 0.7rem',
+                    borderRadius: '4px',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#fca5a5',
+                    fontSize: '0.72rem',
+                    fontFamily: 'monospace',
+                  }}>{ext} × {count}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Deleted Files Table */}
+          {hasDeletedResults ? (
+            <div className="metadata-table-wrapper">
+              <table className="metadata-table">
+                <thead>
+                  <tr>
+                    <th>FILE NAME</th>
+                    <th>PATH</th>
+                    <th>INODE</th>
+                    <th>SIZE</th>
+                    <th>TYPE</th>
+                    <th>RECOVER</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletedFiles.map((f, i) => (
+                    <tr key={i} style={{ background: i % 2 === 0 ? 'rgba(239,68,68,0.04)' : 'transparent' }}>
+                      <td className="prop-name" style={{ color: '#fca5a5' }}>
+                        {f.is_deleted ? '🗑️ ' : ''}{f.name}
+                      </td>
+                      <td className="prop-val" style={{ fontSize: '0.7rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.path}</td>
+                      <td className="prop-val" style={{ fontFamily: 'monospace', color: '#a78bfa' }}>{f.inode}</td>
+                      <td className="prop-val" style={{ fontFamily: 'monospace' }}>
+                        {f.size >= 1048576 ? `${(f.size / 1048576).toFixed(1)} MB` :
+                         f.size >= 1024 ? `${(f.size / 1024).toFixed(1)} KB` :
+                         `${f.size} B`}
+                      </td>
+                      <td className="prop-val">
+                        <span style={{
+                          padding: '0.15rem 0.4rem',
+                          borderRadius: '3px',
+                          fontSize: '0.65rem',
+                          background: f.extension === '.exe' || f.extension === '.bat' || f.extension === '.sh' ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.15)',
+                          color: f.extension === '.exe' || f.extension === '.bat' || f.extension === '.sh' ? '#fca5a5' : '#a5b4fc',
+                          fontFamily: 'monospace',
+                        }}>{f.extension || f.type}</span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await axios.post(`${apiBase}/analyze/autopsy/recover`, {
+                                drive_path: data.target_folder,
+                                inode: f.inode,
+                                output_name: f.name
+                              });
+                              const r = res.data?.results;
+                              if (r?.status === 'Recovered') {
+                                alert(`✅ Recovered!\n\nFile: ${r.output_file}\nSize: ${r.size_bytes} bytes\nSHA-256: ${r.sha256}`);
+                              } else {
+                                alert(`⚠️ ${r?.message || r?.error || 'Recovery failed'}`);
+                              }
+                            } catch (err) {
+                              alert(`❌ Recovery error: ${err.response?.data?.detail || err.message}`);
+                            }
+                          }}
+                          style={{
+                            padding: '0.25rem 0.65rem',
+                            fontSize: '0.7rem',
+                            fontFamily: 'monospace',
+                            borderRadius: '4px',
+                            border: '1px solid rgba(16, 185, 129, 0.4)',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            color: '#6ee7b7',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                          onMouseEnter={e => { e.target.style.background = 'rgba(16, 185, 129, 0.3)'; }}
+                          onMouseLeave={e => { e.target.style.background = 'rgba(16, 185, 129, 0.12)'; }}
+                        >⬇ Recover</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {data.notice && (
+                <div style={{ padding: '0.75rem', fontSize: '0.72rem', color: '#f59e0b', fontFamily: 'monospace', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  ⚠ {data.notice}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✅</div>
+              No deleted files found in the scanned area.
+            </div>
+          )}
         </div>
       );
     }
