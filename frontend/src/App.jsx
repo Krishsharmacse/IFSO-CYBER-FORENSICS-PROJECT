@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import CyberChat from './CyberChat';
+import CaseManagement from './CaseManagement';
 import {
-  Shield, FileText, Camera, HardDrive, Activity, Search, Upload, Play,
+  Shield, FileText, Briefcase, Camera, HardDrive, Activity, Search, Upload, Play,
   Terminal, Cpu, Smartphone, Globe, Network, Mail, List, Image, Key, Zap,
   ChevronDown, ChevronRight, Folder, FolderOpen, RefreshCw, AlertTriangle, CheckCircle, Info,
   Eye, FileCode, Server
 } from 'lucide-react';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000';
 
 function App() {
-  const [activeTab, setActiveTab] = useState('exiftool');
+  const [activeTab, setActiveTab] = useState('cases');
+  const [activeCaseGlobal, setActiveCaseGlobal] = useState(null);
   const [filePath, setFilePath] = useState('');
   const [rulesPath, setRulesPath] = useState('');
   const [volatilityScanType, setVolatilityScanType] = useState('info');
@@ -55,6 +57,18 @@ function App() {
 
 
   const categories = [
+    {
+      id: 'management',
+      title: 'Investigation Management',
+      icon: Briefcase,
+      items: [
+        {
+          id: 'cases', label: 'Case Management', tool: 'Tracker', icon: Briefcase,
+          desc: 'Manage cases, log evidence, and track analysis history.'
+        }
+      ]
+    },
+
     {
       id: 'static',
       title: 'Static & Malware',
@@ -109,6 +123,10 @@ function App() {
         {
           id: 'androguard', label: 'APK Static Analysis', tool: 'Androguard', icon: Smartphone,
           desc: 'Statically parse APK files, extract permissions, services, and check spoof indicators.'
+        },
+        {
+          id: 'jadx', label: 'APK Decompiler', tool: 'Jadx', icon: FileCode,
+          desc: 'Decompile APK files to Java source code.'
         },
         {
           id: 'ghidra', label: 'Reverse Engineering', tool: 'Ghidra Headless', icon: Cpu,
@@ -177,6 +195,13 @@ function App() {
           'Analyzing component classes: Activities, Services, Receivers...',
           'Cross-matching permissions against known overlay/malware lists...',
           'Calculating static APK threat risk score...'
+        ],
+        jadx: [
+          'Initializing Jadx decompiler...',
+          'Unpacking APK archive...',
+          'Decompiling dex bytecode to Java...',
+          'Exporting resources and source files...',
+          'Completing decompilation process...'
         ],
         mobsf: [
           'Checking MobSF local status on port 8001...',
@@ -252,36 +277,37 @@ function App() {
 
     try {
       let endpoint = '';
-      let payload = { file_path: filePath };
+      let payload = { file_path: filePath, case_id: activeCaseGlobal };
 
       if (activeTab === 'exiftool') endpoint = '/analyze/exiftool';
       if (activeTab === 'yara') {
         endpoint = '/analyze/yara';
-        payload.rules_path = rulesPath;
+        payload.rules_path = rulesPath; payload.case_id = activeCaseGlobal;
       }
       if (activeTab === 'androguard') endpoint = '/analyze/androguard';
+      if (activeTab === 'jadx') endpoint = '/analyze/jadx';
       if (activeTab === 'autopsy') {
         endpoint = '/analyze/autopsy';
-        payload = { image_path: filePath, scan_type: sleuthkitScanType };
+        payload = { image_path: filePath, scan_type: sleuthkitScanType, case_id: activeCaseGlobal };
       }
       if (activeTab === 'ghidra') {
         endpoint = '/analyze/ghidra';
-        payload.extract_code = ghidraExtractCode;
+        payload.extract_code = ghidraExtractCode; payload.case_id = activeCaseGlobal;
         payload.timeout = parseInt(ghidraTimeout) || 900;
       }
       if (activeTab === 'mobsf') endpoint = '/analyze/mobsf';
 
       if (activeTab === 'volatility') {
         endpoint = '/analyze/volatility';
-        payload.scan_type = volatilityScanType;
+        payload.scan_type = volatilityScanType; payload.case_id = activeCaseGlobal;
       }
       if (activeTab === 'threat_intel') {
         endpoint = '/analyze/threat_intel';
-        payload = { target: filePath, scan_type: threatIntelScanType, api_key: threatIntelApiKey };
+        payload = { target: filePath, scan_type: threatIntelScanType, api_key: threatIntelApiKey, case_id: activeCaseGlobal };
       }
       if (activeTab === 'network') {
         endpoint = '/analyze/network';
-        payload = { file_path: filePath, scan_type: networkScanType };
+        payload = { file_path: filePath, scan_type: networkScanType, case_id: activeCaseGlobal };
       }
       if (activeTab === 'email') endpoint = '/analyze/email';
       if (activeTab === 'evtx') endpoint = '/analyze/evtx';
@@ -298,16 +324,17 @@ function App() {
           failure_string: bruteFailureStr,
           max_attempts: parseInt(bruteMaxAttempts) || 1000,
           port: brutePort ? parseInt(brutePort) : null,
+          case_id: activeCaseGlobal
         };
         endpoint = '/analyze/brute';
       }
       if (activeTab === 'registry') {
         endpoint = '/analyze/registry';
-        payload = { sam_path: filePath, system_path: systemPath };
+        payload = { sam_path: filePath, system_path: systemPath, case_id: activeCaseGlobal };
       }
       if (activeTab === 'ip_resolver') {
         endpoint = '/analyze/ip_resolver';
-        payload = { target: filePath };
+        payload = { target: filePath, case_id: activeCaseGlobal };
       }
 
       const axiosTimeout = activeTab === 'ghidra' ? ((parseInt(ghidraTimeout) || 900) + 5) * 1000 : 0;
@@ -439,7 +466,8 @@ function App() {
           <div className="cyber-corner-bl"></div>
           <div className="cyber-corner-br"></div>
 
-          <div className="form-title">
+          {activeTab === 'cases' && <CaseManagement setActiveCaseGlobal={setActiveCaseGlobal} />}
+          {activeTab !== 'cases' && <><div className="form-title">
             <Server size={18} style={{ color: 'var(--primary)' }} />
             <h2>Investigation Setup</h2>
           </div>
@@ -454,7 +482,7 @@ function App() {
                   activeTab === 'ip_resolver' ? "8.8.8.8 or 2001:4860:4860::8888" :
                   activeTab === 'autopsy' ? (sleuthkitScanType === 'deleted_files' ? "D:\\burger or D:\\" : "/path/to/evidence/image.dd or .E01") :
                     activeTab === 'ghidra' ? "/path/to/malware/sample.exe" :
-                      activeTab === 'mobsf' || activeTab === 'androguard' ? "/path/to/mobile/app.apk" :
+                      activeTab === 'mobsf' || activeTab === 'androguard' || activeTab === 'jadx' ? "/path/to/mobile/app.apk" :
                         activeTab === 'volatility' ? "/path/to/memory/dump.vmem" :
                           (activeTab === 'threat_intel' && threatIntelScanType === 'ip') ? "8.8.8.8" :
                             (activeTab === 'threat_intel' && (threatIntelScanType === 'whois' || threatIntelScanType === 'safebrowsing' || threatIntelScanType === 'urlscan' || threatIntelScanType === 'pulsedive')) ? "example.com" :
@@ -731,7 +759,7 @@ function App() {
                 </>
               )}
             </button>
-          </div>
+          </div></>}
         </section>
 
         { }
@@ -1149,6 +1177,257 @@ function GhidraReport({ data }) {
 }
 
 
+
+function JadxReport({ data }) {
+  const [selectedFile, setSelectedFile] = React.useState(null);
+  const [treeSearch, setTreeSearch] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState('sources');
+  const [expandedDirs, setExpandedDirs] = React.useState({});
+
+  const tree = data?.source_tree || [];
+
+  // Build directory tree structure
+  const buildDirTree = (files) => {
+    const root = {};
+    files.forEach(f => {
+      const parts = f.path.split('/');
+      let node = root;
+      parts.forEach((part, idx) => {
+        if (idx === parts.length - 1) {
+          if (!node.__files) node.__files = [];
+          node.__files.push(f);
+        } else {
+          if (!node[part]) node[part] = {};
+          node = node[part];
+        }
+      });
+    });
+    return root;
+  };
+
+  const filtered = treeSearch
+    ? tree.filter(f => f.path.toLowerCase().includes(treeSearch.toLowerCase()))
+    : tree;
+
+  const javaFiles = tree.filter(f => f.ext === '.java');
+  const xmlFiles  = tree.filter(f => f.ext === '.xml');
+
+  const tabFiles = activeTab === 'sources' ? javaFiles
+    : activeTab === 'xml' ? xmlFiles
+    : tree;
+
+  const displayFiles = treeSearch
+    ? tabFiles.filter(f => f.path.toLowerCase().includes(treeSearch.toLowerCase()))
+    : tabFiles;
+
+  const extColor = (ext) => ({
+    '.java': '#f59e0b',
+    '.xml':  '#60a5fa',
+    '.json': '#a78bfa',
+    '.kt':   '#f472b6',
+    '.smali':'#34d399',
+    '.gradle':'#fb923c',
+  }[ext] || '#9ca3af');
+
+  const extIcon = (ext) => ({
+    '.java': '☕',
+    '.xml':  '📄',
+    '.json': '{}',
+    '.kt':   'K',
+    '.smali':'⚙',
+    '.gradle':'🐘',
+    '.properties':'⚙',
+    '.txt': '📝',
+  }[ext] || '📄');
+
+  const getLineColor = (line) => {
+    const t = line.trim();
+    if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return '#6b7280';
+    if (/^(import|package)\s/.test(t)) return '#a5b4fc';
+    if (/^(public|private|protected|static|final|abstract|class|interface|enum|void|int|String|boolean|return|new|if|else|for|while|try|catch|throws|extends|implements)\b/.test(t)) return '#c084fc';
+    if (/^@/.test(t)) return '#fb923c';
+    return '#e5e7eb';
+  };
+
+  const btnS = (id) => ({
+    padding: '0.3rem 0.75rem',
+    borderRadius: '4px',
+    border: `1px solid ${activeTab === id ? 'var(--primary)' : 'rgba(255,255,255,0.1)'}`,
+    background: activeTab === id ? 'rgba(0,240,255,0.12)' : 'transparent',
+    color: activeTab === id ? 'var(--primary)' : 'var(--text-muted)',
+    cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.72rem',
+    transition: 'all 0.2s',
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+        {[
+          { label: 'TOTAL FILES', value: data?.total_files ?? 0, color: '#00f0ff' },
+          { label: 'JAVA CLASSES', value: data?.java_count ?? 0, color: '#f59e0b' },
+          { label: 'XML RESOURCES', value: data?.xml_count ?? 0, color: '#60a5fa' },
+          { label: 'STATUS', value: data?.status || '—', color: '#10b981' },
+        ].map(s => (
+          <div key={s.label} className="cyber-panel" style={{ padding: '1rem', textAlign: 'center', position: 'relative' }}>
+            <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+            <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.1em', fontFamily: 'monospace', marginBottom: '0.4rem' }}>{s.label}</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 'bold', color: s.color, fontFamily: 'monospace' }}>{s.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Output Dir */}
+      {data?.output_dir && (
+        <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--text-muted)', padding: '0.5rem 0.75rem', background: 'rgba(0,240,255,0.04)', border: '1px solid rgba(0,240,255,0.12)', borderRadius: '4px' }}>
+          <span style={{ color: '#00f0ff' }}>📁 OUTPUT DIR:</span> {data.output_dir}
+        </div>
+      )}
+
+      {/* Main Explorer + Code View */}
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1rem', height: '75vh' }}>
+
+        {/* File Explorer */}
+        <div className="cyber-panel" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+
+          <div style={{ padding: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--primary)', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em' }}>⬡ SOURCE EXPLORER</div>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <button style={btnS('sources')} onClick={() => setActiveTab('sources')}>☕ Java ({javaFiles.length})</button>
+              <button style={btnS('xml')} onClick={() => setActiveTab('xml')}>📄 XML ({xmlFiles.length})</button>
+              <button style={btnS('all')} onClick={() => setActiveTab('all')}>All ({tree.length})</button>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <Search size={11} style={{ position: 'absolute', left: '0.5rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Filter files..."
+                value={treeSearch}
+                onChange={e => setTreeSearch(e.target.value)}
+                style={{ width: '100%', paddingLeft: '1.6rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '4px', color: '#fff', fontSize: '0.72rem', fontFamily: 'monospace', padding: '0.3rem 0.5rem 0.3rem 1.6rem', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflow: 'auto', padding: '0.35rem 0' }}>
+            {displayFiles.length === 0 ? (
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>No files found</div>
+            ) : (
+              displayFiles.map((f, i) => {
+                const depth = f.path.split('/').length - 1;
+                const isSelected = selectedFile?.path === f.path;
+                return (
+                  <div
+                    key={i}
+                    onClick={() => setSelectedFile(f)}
+                    style={{
+                      padding: `0.28rem 0.75rem 0.28rem ${0.5 + depth * 0.8}rem`,
+                      cursor: 'pointer',
+                      background: isSelected ? 'rgba(0,240,255,0.12)' : 'transparent',
+                      borderLeft: isSelected ? '2px solid var(--primary)' : '2px solid transparent',
+                      display: 'flex', alignItems: 'center', gap: '0.4rem',
+                      transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    <span style={{ fontSize: '0.7rem', flexShrink: 0 }}>{extIcon(f.ext)}</span>
+                    <span style={{ fontSize: '0.7rem', color: isSelected ? 'var(--primary)' : extColor(f.ext), fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={f.path}>
+                      {f.name}
+                    </span>
+                    <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'monospace', flexShrink: 0 }}>
+                      {f.size > 1024 ? `${(f.size/1024).toFixed(0)}K` : `${f.size}B`}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Code Viewer */}
+        <div className="cyber-panel" style={{ position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+
+          {selectedFile ? (
+            <>
+              {/* File Tab Bar */}
+              <div style={{ padding: '0.5rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                  <span style={{ fontSize: '0.8rem' }}>{extIcon(selectedFile.ext)}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: extColor(selectedFile.ext), fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFile.name}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>— {selectedFile.path}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                  {selectedFile.content && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(selectedFile.content)}
+                      style={{ background: 'rgba(0,240,255,0.08)', border: '1px solid rgba(0,240,255,0.25)', color: 'var(--primary)', borderRadius: '4px', padding: '0.2rem 0.55rem', cursor: 'pointer', fontSize: '0.68rem', fontFamily: 'monospace' }}
+                    >📋 COPY</button>
+                  )}
+                  <span style={{ fontFamily: 'monospace', fontSize: '0.65rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+                    {selectedFile.content ? `${selectedFile.content.split('\n').length} lines` : 'binary'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Code Body */}
+              {selectedFile.content ? (
+                <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+                  {/* Line Numbers */}
+                  <div style={{ padding: '0.75rem 0.5rem', background: 'rgba(0,0,0,0.3)', borderRight: '1px solid rgba(255,255,255,0.05)', textAlign: 'right', userSelect: 'none', flexShrink: 0 }}>
+                    {selectedFile.content.split('\n').map((_, i) => (
+                      <div key={i} style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'rgba(255,255,255,0.2)', lineHeight: '1.65', minWidth: '32px' }}>{i + 1}</div>
+                    ))}
+                  </div>
+                  {/* Code */}
+                  <pre style={{ margin: 0, padding: '0.75rem 1rem', fontFamily: '"Fira Code", "Cascadia Code", monospace', fontSize: '0.8rem', lineHeight: '1.65', flex: 1, overflow: 'visible', whiteSpace: 'pre' }}>
+                    {selectedFile.content.split('\n').map((line, i) => (
+                      <div key={i} style={{ color: getLineColor(line), minHeight: '1.65em' }}>{line || ' '}</div>
+                    ))}
+                  </pre>
+                </div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '2rem' }}>🔒</span>
+                  <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.8rem' }}>Binary or too large to display inline</div>
+                  <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.7rem' }}>Size: {(selectedFile.size / 1024).toFixed(1)} KB</div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
+              <FileCode size={48} style={{ color: 'rgba(0,240,255,0.15)' }} />
+              <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.85rem' }}>Select a file from the explorer to view source</div>
+              <div style={{ color: 'rgba(255,255,255,0.15)', fontFamily: 'monospace', fontSize: '0.72rem' }}>{tree.length} files decompiled successfully</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Jadx Log */}
+      {data?.log && (
+        <div className="cyber-panel" style={{ position: 'relative' }}>
+          <div className="cyber-corner-tl" /><div className="cyber-corner-tr" />
+          <div className="cyber-corner-bl" /><div className="cyber-corner-br" />
+          <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: '0.72rem', color: '#a5b4fc', fontFamily: 'monospace', fontWeight: 'bold', letterSpacing: '0.1em' }}>⬡ JADX DECOMPILER LOG</span>
+          </div>
+          <pre style={{ margin: 0, padding: '0.75rem 1rem', fontFamily: 'monospace', fontSize: '0.72rem', color: '#6b7280', whiteSpace: 'pre-wrap', maxHeight: '200px', overflow: 'auto', lineHeight: '1.6' }}>
+            {data.log}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
   if (!data) return <p style={{ color: 'var(--text-muted)' }}>No node metadata returned by engine.</p>;
   if (data.error) {
@@ -1351,6 +1630,9 @@ function renderInteractiveReport(tool, data, filter, setFilter, apiBase) {
 
     case 'ghidra':
       return <GhidraReport data={data} />;
+
+    case 'jadx':
+      return <JadxReport data={data} />;
 
 
     case 'mobsf': {

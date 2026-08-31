@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: cyberx-backend
+    env: docker
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
+    plan: free
+    envVars:
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: ABUSEIPDB_API_KEY
+        sync: false
+      - key: SHODAN_API_KEY
+        sync: false
+      - key: ALIENVAULT_API_KEY
+        sync: false
