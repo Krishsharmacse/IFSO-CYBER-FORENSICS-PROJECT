@@ -807,5 +807,6 @@ numpy              # Numerical ops
 
 ## 👨‍💻 Developer
 
-Built as part of an IFSO (Indian Forensic Science Organization) Cyber Forensics project.  
+Built as part of an IFSO  Cyber Forensics project.  
 **Made in India 🇮🇳** | CyberX SOC Platform v2.0
+live at https://ifso-cyber-forensics-project.vercel.app/
