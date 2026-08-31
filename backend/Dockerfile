@@ -5,19 +5,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies required for forensic tools
-# Warning: This is a heavy installation process
-RUN apt-get update && apt-get install -y \
-    exiftool \
-    yara \
-    sleuthkit \
-    tshark \
-    john \
-    steghide \
-    openjdk-17-jdk \
-    wget \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
+# No heavy system dependencies installed for Lite version
 
 # Set working directory
 WORKDIR /app
