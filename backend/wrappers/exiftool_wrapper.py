@@ -1,38 +1,44 @@
 import json
 import os
-from wrappers.platform_utils import run, EXIFTOOL_BIN
+import exifread
 
 def run_exiftool(file_path: str):
     """
-    Runs exiftool on a specified file path and returns extracted metadata.
-    Works on both Windows and Linux/macOS.
+    Extracts EXIF metadata from an image file using the pure Python `exifread` library.
+    This acts as a lightweight replacement for the Perl-based exiftool.
     """
     if not os.path.exists(file_path):
         return {"error": f"File not found: {file_path}"}
 
     try:
-        cmd = [EXIFTOOL_BIN, '-j']
-
         if os.path.isdir(file_path):
-            cmd.append('-r')
-
-        cmd.append(file_path)
-
-        result = run(cmd, timeout=60)
-
-        if result.returncode == 0:
-            output = json.loads(result.stdout)
-            if os.path.isdir(file_path):
-                return {"total_files_scanned": len(output), "all_metadata": output}
-            else:
-                return output[0] if len(output) > 0 else {}
+            all_meta = []
+            for root, _, files in os.walk(file_path):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    meta = _process_single_file(full_path)
+                    if meta:
+                        meta["FileName"] = file
+                        all_meta.append(meta)
+            return {"total_files_scanned": len(all_meta), "all_metadata": all_meta}
         else:
-            return {"error": result.stderr.strip() or "exiftool returned a non-zero exit code."}
+            return _process_single_file(file_path)
 
-    except FileNotFoundError:
-        return {
-            "error": "exiftool is not installed or not found in PATH.",
-            "fix": "Linux: sudo apt install exiftool | Windows: Download from https://exiftool.org and add to PATH"
-        }
     except Exception as e:
         return {"error": str(e)}
+
+def _process_single_file(file_path: str):
+    try:
+        with open(file_path, 'rb') as f:
+            tags = exifread.process_file(f, details=False)
+            
+            output = {}
+            for tag, val in tags.items():
+                if tag not in ('JPEGThumbnail', 'TIFFThumbnail', 'Filename', 'EXIF MakerNote'):
+                    output[tag] = str(val)
+            
+            if not output:
+                return {"message": "No EXIF metadata found or file format not supported by exifread."}
+            return output
+    except Exception as e:
+        return {"error": f"Error parsing {file_path}: {str(e)}"}

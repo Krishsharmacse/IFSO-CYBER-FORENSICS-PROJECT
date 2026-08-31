@@ -171,7 +171,7 @@ class ProgressTracker:
 # MAIN CRACKING FUNCTION
 # ============================================================================
 
-def crack_hash(file_path: str, jtr_timeout: int = 300, use_john: bool = True) -> Dict[str, Any]:
+def crack_hash(file_path: str, jtr_timeout: int = 300, use_john: bool = False) -> Dict[str, Any]:
     """
     Cracks MD5, SHA-1, SHA-256, SHA-384, and SHA-512 hashes 
     using John the Ripper with a high-speed Python fallback.

@@ -29,4 +29,6 @@ paramiko             # SSH brute force
 pyzipper             # AES-encrypted ZIP cracking
 pikepdf              # PDF password cracking
 reportlab            # PDF report generation
-
+exifread             # Pure Python EXIF metadata extraction
+scapy                # Pure Python network packet manipulation/parsing
+stegano              # Pure Python steganography detection
