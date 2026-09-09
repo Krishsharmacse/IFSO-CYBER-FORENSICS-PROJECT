@@ -3,9 +3,9 @@ import re
 import math
 import joblib
 import numpy as np
-import pandas as pd
+import pathlib
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "random_forest_model.pkl")
+MODEL_PATH = pathlib.Path(__file__).resolve().parents[1] / "Ml Model" / "random_forest_model.pkl"
 
 rf_model = None
 try:
@@ -24,18 +24,15 @@ def shannon_entropy(url):
     return -sum([p * math.log2(p) for p in prob])
 
 def extract_features(url):
-    # Lexical features
     url_length = len(url)
     try:
-        # Strip scheme for hostname
         clean_url = url.replace("https://", "").replace("http://", "")
         hostname_length = len(clean_url.split('/')[0])
-    except:
+    except Exception:
         hostname_length = 0
         
     num_subdirectories = url.count('/')
     
-    # Char features
     num_digits = sum(c.isdigit() for c in url)
     num_special_chars = len(re.findall(r'[^a-zA-Z0-9]', url))
     num_dots = url.count('.')
@@ -46,7 +43,6 @@ def extract_features(url):
     num_equal = url.count('=')
     num_percent = url.count('%')
     
-    # Token features
     tokens = re.split(r'[./?=&\-_]', str(url))
     valid_tokens = [t for t in tokens if len(t) > 0]
     
@@ -56,14 +52,12 @@ def extract_features(url):
         longest_token_length = 0
     else:
         num_tokens = len(valid_tokens)
-        avg_token_length = np.mean([len(t) for t in valid_tokens])
+        avg_token_length = float(np.mean([len(t) for t in valid_tokens]))
         longest_token_length = max([len(t) for t in valid_tokens])
         
-    # Suspicious words
     url_lower = url.lower()
     has_words = {word: int(word in url_lower) for word in suspicious_words}
     
-    # Domain features
     has_ip_address = int(bool(re.search(r'\d+\.\d+\.\d+\.\d+', url)))
     has_https = int("https" in url_lower)
     
@@ -71,12 +65,11 @@ def extract_features(url):
         clean_url = url.replace("https://", "").replace("http://", "")
         hostname = clean_url.split('/')[0]
         tld_length = len(hostname.split('.')[-1]) if '.' in hostname else 0
-    except:
+    except Exception:
         tld_length = 0
         
     url_entropy = shannon_entropy(url)
     
-    # Return exactly 29 features in order
     features = [
         url_length, hostname_length, num_subdirectories, num_digits,
         num_special_chars, num_dots, num_hyphens, num_underscores,
@@ -97,25 +90,21 @@ def extract_features(url):
         'tld_length', 'url_entropy'
     ]
     
-    return pd.DataFrame([features], columns=feature_names)
+    return np.array([features]), dict(zip(feature_names, features))
 
 def analyze_url_ml(url: str):
     if rf_model is None:
         return {"error": "Random Forest ML Model not found."}
         
     try:
-        X = extract_features(url)
+        X, features_dict = extract_features(url)
         prediction = rf_model.predict(X)[0]
         probabilities = rf_model.predict_proba(X)[0]
         
-        # Label mapping (based on alphabetical order of LabelEncoder)
         classes = ["benign", "defacement", "malware", "phishing"]
         pred_label = classes[prediction]
         
         confidence = float(np.max(probabilities))
-        
-        # Format feature dict for display
-        features_dict = X.to_dict(orient="records")[0]
         
         return {
             "ml_analysis": {

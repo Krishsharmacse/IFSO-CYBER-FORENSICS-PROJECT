@@ -21,10 +21,12 @@ python-evtx          # Windows EVTX event log parsing
 eml-parser           # Email (.eml) analysis
 androguard           # Android APK static analysis
 impacket             # SAM/SYSTEM hash extraction (secretsdump)
-whois                # WHOIS domain lookups
+python-whois          # WHOIS domain lookups
 
 # ── Brute-force / Credential Tools ────────────────────────────────────────────
 requests             # HTTP brute force
 paramiko             # SSH brute force
 pyzipper             # AES-encrypted ZIP cracking
 pikepdf              # PDF password cracking
+reportlab            # PDF report generation
+

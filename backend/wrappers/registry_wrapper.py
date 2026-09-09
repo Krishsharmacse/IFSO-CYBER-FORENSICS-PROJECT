@@ -26,8 +26,6 @@ def crack_registry(sam_path: str, system_path: str):
         }
 
     try:
-        # 1. Extract hashes with impacket-secretsdump
-        # On Windows the binary may be a .exe; on Linux it's a console script
         dump_cmd = [SECRETSDUMP_BIN, "-sam", sam_path, "-system", system_path, "LOCAL"]
         dump_proc = run(dump_cmd, timeout=60)
 
@@ -38,7 +36,6 @@ def crack_registry(sam_path: str, system_path: str):
                 "details": dump_output + "\n" + dump_proc.stderr
             }
 
-        # 2. Parse NTLM hashes for John
         EMPTY_LM = "aad3b435b51404eeaad3b435b51404ee"
         EMPTY_NT = "31d6cfe0d16ae931b73c59d7e0c089c0"
         hashes = []
@@ -56,7 +53,6 @@ def crack_registry(sam_path: str, system_path: str):
                 "raw_dump": dump_output.split("\n")
             }
 
-        # 3. Write hashes to temp file
         fd, temp_hash_path = tempfile.mkstemp(suffix=".txt")
         try:
             with os.fdopen(fd, "w") as tmp:
@@ -74,7 +70,6 @@ def crack_registry(sam_path: str, system_path: str):
                     )
                 }
 
-            # 4. Run John the Ripper with NT format
             john_proc = run([JOHN_BIN, "--format=NT", temp_hash_path], timeout=120)
             show_proc = run([JOHN_BIN, "--show", "--format=NT", temp_hash_path], timeout=30)
 

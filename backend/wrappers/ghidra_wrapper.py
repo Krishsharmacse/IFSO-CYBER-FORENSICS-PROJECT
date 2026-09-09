@@ -15,25 +15,23 @@ from enum import Enum
 from datetime import datetime
 from contextlib import contextmanager
 
-# Platform-specific imports
 try:
-    import pefile  # For PE file analysis
+    import pefile
 except ImportError:
     pefile = None
 
 try:
-    from elftools.elf.elffile import ELFFile  # For ELF file analysis
+    from elftools.elf.elffile import ELFFile
 except ImportError:
     ELFFile = None
 
 try:
-    import magic  # python-magic for file type detection
+    import magic
 except ImportError:
     magic = None
 
 from wrappers.platform_utils import run, GHIDRA_HEADLESS, IS_WINDOWS
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -41,9 +39,30 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Custom Exceptions
-# ============================================================================
+_GHIDRA_PROGRESS: Dict[str, Dict[str, Any]] = {}
+
+def set_progress(file_path: Optional[str], percent: int, stage: str, status: str = "running") -> None:
+    """Update Ghidra progress status."""
+    data = {
+        "percent": percent,
+        "stage": stage,
+        "status": status,
+        "timestamp": time.time()
+    }
+    if file_path:
+        key = os.path.abspath(file_path)
+        _GHIDRA_PROGRESS[key] = data
+    _GHIDRA_PROGRESS["latest"] = data
+
+
+def get_progress(file_path: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieve Ghidra progress status."""
+    if file_path:
+        key = os.path.abspath(file_path)
+        if key in _GHIDRA_PROGRESS:
+            return _GHIDRA_PROGRESS[key]
+    return _GHIDRA_PROGRESS.get("latest", {"percent": 0, "stage": "Idle", "status": "idle"})
+
 
 class GhidraAnalysisError(Exception):
     """Base exception for Ghidra analysis errors."""
@@ -62,9 +81,6 @@ class FileValidationError(GhidraAnalysisError):
     pass
 
 
-# ============================================================================
-# Enums and Data Classes
-# ============================================================================
 
 class BinaryFormat(Enum):
     """Binary file formats."""
@@ -123,12 +139,9 @@ class AnalysisResult:
     duration_seconds: float = 0.0
     project_dir: Optional[str] = None
     project_name: Optional[str] = None
-    decompiled_code: str = "" # Storing the massive C source code output
+    decompiled_code: str = ""
 
 
-# ============================================================================
-# File Analysis Utilities
-# ============================================================================
 
 class BinaryAnalyzer:
     """Handles pre-Ghidra binary analysis and validation."""
@@ -332,9 +345,6 @@ class BinaryAnalyzer:
         return metadata
 
 
-# ============================================================================
-# Ghidra Analysis Engine
-# ============================================================================
 
 class GhidraAnalyzer:
     """Handles Ghidra headless analysis with advanced options."""
@@ -362,7 +372,7 @@ public class export_script extends GhidraScript {
         if (output_path == null) {
             output_path = "/tmp/ghidra_export.json";
         }
-        output_path = output_path.replace("\\\\\\\\", "/");
+        output_path = output_path.replace("\\\\", "/");
         
         StringBuilder json = new StringBuilder();
         json.append("{\\n");
@@ -373,6 +383,7 @@ public class export_script extends GhidraScript {
         ConsoleTaskMonitor monitor = new ConsoleTaskMonitor();
         
         StringBuilder decompiledCode = new StringBuilder();
+        int decompiledCount = 0;
         
         FunctionIterator functions = currentProgram.getFunctionManager().getFunctions(true);
         boolean firstFunc = true;
@@ -401,11 +412,12 @@ public class export_script extends GhidraScript {
             json.append("]\\n");
             json.append("    }");
             
-            if (!func.isExternal() && !func.isThunk()) {
-                DecompileResults res = decompInterface.decompileFunction(func, 60, monitor);
+            if (!func.isExternal() && !func.isThunk() && decompiledCount < 150) {
+                DecompileResults res = decompInterface.decompileFunction(func, 15, monitor);
                 if (res != null && res.getDecompiledFunction() != null) {
                     decompiledCode.append(res.getDecompiledFunction().getC());
                     decompiledCode.append("\\n\\n");
+                    decompiledCount++;
                 }
             }
         }
@@ -451,7 +463,8 @@ public class export_script extends GhidraScript {
     def __init__(self, timeout: int = 300, keep_project: bool = False):
         self.timeout = timeout
         self.keep_project = keep_project
-        
+        self._ghidra_path_cache = None
+
     def _validate_binary(self, file_path: str) -> None:
         """Validate input binary file."""
         if not os.path.exists(file_path):
@@ -467,27 +480,56 @@ public class export_script extends GhidraScript {
             raise FileValidationError(f"File is not readable: {file_path}")
     
     def _get_ghidra_path(self) -> str:
-        """Get Ghidra headless path with validation."""
-        if not GHIDRA_HEADLESS:
-            raise GhidraNotFoundError(
-                "Ghidra analyzeHeadless path not configured. "
-                "Please set GHIDRA_HEADLESS in platform_utils."
-            )
-        
+        """Get Ghidra headless path with validation and auto-detection on Windows."""
+        if self._ghidra_path_cache:
+            return self._ghidra_path_cache
+
         ghidra_path = GHIDRA_HEADLESS
+
+        if not ghidra_path or not os.path.exists(ghidra_path):
+            if IS_WINDOWS:
+                possible_paths = [
+                    r"C:\Program Files\Ghidra\support\analyzeHeadless.bat",
+                    r"C:\Program Files\Ghidra\analyzeHeadless.bat",
+                    r"C:\Program Files (x86)\Ghidra\support\analyzeHeadless.bat",
+                    r"C:\Program Files (x86)\Ghidra\analyzeHeadless.bat",
+                    os.path.expandvars(r"%USERPROFILE%\ghidra\support\analyzeHeadless.bat"),
+                    os.path.expandvars(r"%PROGRAMFILES%\Ghidra\support\analyzeHeadless.bat"),
+                ]
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        ghidra_path = path
+                        break
+                else:
+                    raise GhidraNotFoundError(
+                        "Ghidra analyzeHeadless not found. Please install Ghidra or set GHIDRA_HEADLESS."
+                    )
+            else:
+                raise GhidraNotFoundError(
+                    "Ghidra analyzeHeadless path not configured. "
+                    "Please set GHIDRA_HEADLESS in platform_utils."
+                )
+
+        ghidra_path = os.path.normpath(ghidra_path)
 
         if os.path.isdir(ghidra_path):
             exec_name = "analyzeHeadless.bat" if IS_WINDOWS else "analyzeHeadless"
             ghidra_path = os.path.join(ghidra_path, "support", exec_name)
-        elif IS_WINDOWS and not ghidra_path.endswith('.bat'):
-            if os.path.exists(ghidra_path + '.bat'):
-                ghidra_path += '.bat'
-                
+
+        if not os.path.exists(ghidra_path) and IS_WINDOWS:
+            base = ghidra_path
+            for ext in ['.bat', '.exe', '']:
+                test_path = base + ext
+                if os.path.exists(test_path):
+                    ghidra_path = test_path
+                    break
+
         if not os.path.exists(ghidra_path):
-            raise GhidraNotFoundError(f"Ghidra analyzeHeadless executable not found at: {ghidra_path}")
-            
+            raise GhidraNotFoundError(f"Ghidra analyzeHeadless not found at: {ghidra_path}")
+
+        self._ghidra_path_cache = ghidra_path
         return ghidra_path
-    
+
     @contextmanager
     def _create_project_dir(self):
         """Create and manage temporary project directory."""
@@ -506,8 +548,10 @@ public class export_script extends GhidraScript {
                       file_path: str, script_path: Optional[str] = None,
                       analysis_options: Optional[List[str]] = None) -> List[str]:
         """Build Ghidra headless command."""
+        ghidra_path = self._get_ghidra_path()
+
         cmd = [
-            self._get_ghidra_path(),
+            ghidra_path,
             temp_dir,
             project_name,
             "-import", file_path,
@@ -562,42 +606,101 @@ public class export_script extends GhidraScript {
         )
         
         try:
+            set_progress(file_path, 10, "Validating binary file & architecture...")
             self._validate_binary(file_path)
             
+            set_progress(file_path, 20, "Extracting binary hashes and PE/ELF headers...")
             result.metadata = BinaryAnalyzer.extract_metadata(file_path)
             logger.info(f"Analyzing {result.metadata.format.value} binary: {file_path}")
             
             project_name = f"Project_{uuid.uuid4().hex[:8]}"
             
+            set_progress(file_path, 35, "Configuring Ghidra project workspace & export scripts...")
             with self._create_project_dir() as temp_dir:
                 result.project_dir = temp_dir if self.keep_project else None
                 result.project_name = project_name
+                
+                safe_file_path = os.path.join(temp_dir, "target_binary.bin")
+                try:
+                    shutil.copy2(file_path, safe_file_path)
+                except Exception as e:
+                    logger.warning(f"Could not copy file to temp dir: {e}, using original path")
+                    safe_file_path = file_path
                 
                 script_path = None
                 export_data_path = os.path.join(temp_dir, "export_results.json")
                 
                 if export_script:
                     script_path = os.path.join(temp_dir, "export_script.java")
-                    with open(script_path, 'w') as f:
+                    with open(script_path, 'w', encoding='utf-8') as f:
                         f.write(export_script)
                     os.environ['GHIDRA_EXPORT_PATH'] = export_data_path
                 
                 cmd = self._build_command(
-                    temp_dir, project_name, file_path, 
+                    temp_dir, project_name, safe_file_path, 
                     script_path, analysis_options
                 )
                 
-                logger.debug(f"Executing: {' '.join(cmd)}")
+                env = os.environ.copy()
+                env['GHIDRA_EXPORT_PATH'] = export_data_path
+                
+                java_home = None
+                if IS_WINDOWS:
+                    if 'JAVA_HOME' in env and os.path.exists(env['JAVA_HOME']):
+                        java_home = env['JAVA_HOME']
+                    
+                    ghidra_executable = self._get_ghidra_path()
+                    bundled_jdk = os.path.abspath(os.path.join(
+                        ghidra_executable, "..", "..", "jdk21", "jdk-21.0.4+7"
+                    ))
+                    
+                    common_java_paths = [
+                        bundled_jdk,
+                        r"C:\Program Files\Java\jdk-21",
+                        r"C:\Program Files\Java\jdk-17",
+                        r"C:\Program Files\Java\jdk-11",
+                        r"C:\Program Files (x86)\Java\jdk-21",
+                        r"C:\Program Files\Eclipse Adoptium\jdk-21.0.4.7-hotspot",
+                        os.path.expandvars(r"%USERPROFILE%\.jdks\openjdk-21.0.4"),
+                    ]
+                    
+                    for candidate in common_java_paths:
+                        if candidate and os.path.exists(os.path.join(candidate, 'bin', 'java.exe')):
+                            java_home = candidate
+                            break
+                    
+                    if java_home:
+                        env['JAVA_HOME'] = java_home
+                        env['PATH'] = os.path.join(java_home, 'bin') + os.pathsep + env.get('PATH', '')
+                else:
+                    ghidra_executable = self._get_ghidra_path()
+                    jdk_path = os.path.abspath(os.path.join(
+                        ghidra_executable, "..", "..", "jdk21", "jdk-21.0.4+7"
+                    ))
+                    if os.path.exists(jdk_path):
+                        env['JAVA_HOME'] = jdk_path
+                        env['PATH'] = os.path.join(jdk_path, "bin") + os.pathsep + env.get('PATH', '')
+
+                creationflags = 0
+                if IS_WINDOWS:
+                    creationflags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                
+                use_shell = IS_WINDOWS and any(' ' in str(arg) for arg in cmd)
+                
+                set_progress(file_path, 50, "Executing Ghidra Headless disassembler & auto-analyzer...")
                 
                 process = subprocess.run(
-                    cmd,
+                    ' '.join(f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in cmd) if use_shell else cmd,
                     capture_output=True,
                     text=True,
                     timeout=self.timeout,
-                    env={**os.environ, 'GHIDRA_EXPORT_PATH': export_data_path}
+                    env=env,
+                    shell=use_shell,
+                    creationflags=creationflags
                 )
                 
-                log_parsed = self._parse_ghidra_log(process.stdout)
+                set_progress(file_path, 88, "Decompiling functions to C-code and parsing STDOUT...")
+                log_parsed = self._parse_ghidra_log(process.stdout or "")
                 result.ghidra_log = log_parsed['info'][-20:]
                 result.errors = log_parsed['errors']
                 result.warnings = log_parsed['warnings']
@@ -606,9 +709,10 @@ public class export_script extends GhidraScript {
                     result.success = True
                     result.status = "Analysis completed successfully"
                     
+                    set_progress(file_path, 95, "Structuring decompiled code and function JSON artifacts...")
                     if export_script and os.path.exists(export_data_path):
                         try:
-                            with open(export_data_path, 'r') as f:
+                            with open(export_data_path, 'r', encoding='utf-8') as f:
                                 export_data = json.load(f)
                             
                             for func_data in export_data.get('functions', []):
@@ -628,7 +732,9 @@ public class export_script extends GhidraScript {
                             logger.error(f"Failed to parse export data: {e}")
                             result.errors.append(f"Export parse error: {e}")
                     
+                    set_progress(file_path, 100, "Analysis completed successfully", status="completed")
                 else:
+                    set_progress(file_path, 100, f"Ghidra exited with code {process.returncode}", status="failed")
                     result.errors.append(
                         f"Ghidra returned non-zero exit code: {process.returncode}"
                     )
@@ -636,24 +742,29 @@ public class export_script extends GhidraScript {
                         result.errors.append(process.stderr[-500:])
         
         except FileValidationError as e:
+            set_progress(file_path, 100, f"File validation failed: {e}", status="failed")
             result.errors.append(str(e))
             result.status = "File validation failed"
             logger.error(str(e))
             
         except GhidraNotFoundError as e:
+            set_progress(file_path, 100, f"Ghidra not found: {e}", status="failed")
             result.errors.append(str(e))
             result.status = "Ghidra not found"
             logger.error(str(e))
             
         except subprocess.TimeoutExpired:
+            set_progress(file_path, 100, "Analysis timed out", status="failed")
             result.errors.append(f"Analysis timed out after {self.timeout} seconds")
             result.status = "Timeout"
             logger.error(f"Analysis timeout for {file_path}")
             
         except Exception as e:
+            set_progress(file_path, 100, f"Unexpected error: {e}", status="failed")
             result.errors.append(f"Unexpected error: {str(e)}")
             result.status = "Analysis failed"
             logger.exception(f"Unexpected error during analysis: {e}")
+
         
         finally:
             result.duration_seconds = time.time() - start_time
@@ -663,20 +774,64 @@ public class export_script extends GhidraScript {
         return result
 
 
-# ============================================================================
-# Main Interface Functions
-# ============================================================================
+
+def setup_ghidra_windows(ghidra_install_path=None) -> bool:
+    """Setup Ghidra for Windows - finds the correct paths and sets up environment."""
+    if not IS_WINDOWS:
+        return False
+        
+    if ghidra_install_path is None:
+        common_paths = [
+            r"C:\Program Files\Ghidra",
+            r"C:\Program Files (x86)\Ghidra",
+            os.path.expandvars(r"%USERPROFILE%\ghidra"),
+        ]
+        for path in common_paths:
+            if os.path.exists(path):
+                ghidra_install_path = path
+                break
+
+    if ghidra_install_path:
+        global GHIDRA_HEADLESS
+        support_path = os.path.join(ghidra_install_path, "support")
+        if os.path.exists(support_path):
+            GHIDRA_HEADLESS = os.path.join(support_path, "analyzeHeadless.bat")
+            return True
+    return False
+
+
+def get_windows_jdk() -> Optional[str]:
+    """Find JDK on Windows for Ghidra."""
+    if not IS_WINDOWS:
+        return None
+        
+    common_jdks = [
+        r"C:\Program Files\Java\jdk-21",
+        r"C:\Program Files\Java\jdk-17",
+        r"C:\Program Files\Eclipse Adoptium\jdk-21.0.4.7-hotspot",
+        os.path.expandvars(r"%USERPROFILE%\.jdks\openjdk-21.0.4"),
+    ]
+        
+    for jdk in common_jdks:
+        if os.path.exists(os.path.join(jdk, "bin", "java.exe")):
+            return jdk
+
+    if 'JAVA_HOME' in os.environ:
+        if os.path.exists(os.path.join(os.environ['JAVA_HOME'], "bin", "java.exe")):
+            return os.environ['JAVA_HOME']
+
+    return None
+
+
 
 def run_headless_analysis(
     file_path: str,
     timeout: int = 300,
     keep_project: bool = False,
     advanced_options: bool = False,
-    extract_code: bool = True,  # Added this to match main.py compatibility
+    extract_code: bool = True,
 ) -> Dict[str, Any]:
-    """
-    Main interface for Ghidra headless analysis.
-    """
+    """Main interface for Ghidra headless analysis."""
     analyzer = GhidraAnalyzer(
         timeout=timeout,
         keep_project=keep_project
@@ -688,7 +843,6 @@ def run_headless_analysis(
             "-analysisTimeoutPerFile", str(timeout)
         ]
     
-    # Run export script if requested
     export_script = GhidraAnalyzer.EXPORT_SCRIPT if extract_code else None
     
     result = analyzer.analyze(
@@ -701,9 +855,7 @@ def run_headless_analysis(
 
 
 def quick_scan(file_path: str) -> Dict[str, Any]:
-    """
-    Quick scan without full Ghidra analysis - just metadata extraction.
-    """
+    """Quick scan without full Ghidra analysis - just metadata extraction."""
     try:
         metadata = BinaryAnalyzer.extract_metadata(file_path)
         return {
@@ -719,9 +871,7 @@ def quick_scan(file_path: str) -> Dict[str, Any]:
 
 
 def batch_analyze(file_paths: List[str], **kwargs) -> List[Dict[str, Any]]:
-    """
-    Analyze multiple files in batch.
-    """
+    """Analyze multiple files in batch."""
     results = []
     for file_path in file_paths:
         logger.info(f"Analyzing {file_path}...")
@@ -731,9 +881,6 @@ def batch_analyze(file_paths: List[str], **kwargs) -> List[Dict[str, Any]]:
     return results
 
 
-# ============================================================================
-# Utility Functions
-# ============================================================================
 
 def _result_to_dict(result: AnalysisResult) -> Dict[str, Any]:
     """Convert AnalysisResult to dictionary for JSON serialization."""
@@ -750,22 +897,21 @@ def _result_to_dict(result: AnalysisResult) -> Dict[str, Any]:
         "duration_seconds": result.duration_seconds,
         "metadata": metadata_dict,
         "functions_count": len(result.functions),
-        "functions": [asdict(f) for f in result.functions[:100]],  # Limit to 100 functions
-        "strings": result.strings[:500],  # Limit to 500 strings
+        "functions": [asdict(f) for f in result.functions[:100]],
+        "strings": result.strings[:500],
         "ghidra_log": result.ghidra_log,
         "errors": result.errors,
         "warnings": result.warnings,
         "project_name": result.project_name,
-        "decompiled_code": result.decompiled_code, # Added decompiled code!
+        "decompiled_code": result.decompiled_code,
     }
 
 
 def save_analysis_to_file(result: Dict[str, Any], output_path: str) -> None:
     """Save analysis results to JSON file."""
-    with open(output_path, 'w') as f:
+    with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, default=str)
     logger.info(f"Analysis results saved to {output_path}")
 
 
-# Alias for backward compatibility with main.py
 analyze_binary = run_headless_analysis
